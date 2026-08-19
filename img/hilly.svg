@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Hills">
+  <title>Hills</title>
+  <g fill="none" stroke="#2c2c28" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2 18c2.5-5 4.5-7.5 6.5-7.5S12.5 13 15 18"/>
+    <path d="M9 18c2-4 3.8-6.2 5.5-6.2S17.8 14 20 18"/>
+    <path d="M2 18h20"/>
+  </g>
+</svg>

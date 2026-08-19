@@ -1,0 +1,376 @@
+@charset "UTF-8";
+/* =========================================================================
+   Connecting the Grid
+   ========================================================================= */
+
+
+/* =========================================================================
+   BRAND TOKENS  <<-- REPLACE THIS BLOCK
+   -------------------------------------------------------------------------
+   Everything below this block is built from these tokens and nothing else.
+   To rebrand the game, change the values here and leave the rest alone.
+
+   These are deliberately NEUTRAL PLACEHOLDERS. They are not National Grid
+   colours and no National Grid brand asset is used anywhere in this project.
+   Drop the official tokens in here when they are available.
+
+   Keep the contrast pairings intact: every --*-ink token is chosen to reach
+   at least 4.5:1 against the surface it sits on (WCAG 2.2 AA, 1.4.3).
+   ========================================================================= */
+:root {
+  /* Page chrome */
+  --brand-surface:        #f7f7f5;
+  --brand-surface-raised: #ffffff;
+  --brand-ink:            #1d1d20;
+  --brand-ink-muted:      #56565f;
+  --brand-line:           #d6d6dc;
+
+  /* Accent, used for focus, the current route and primary actions */
+  --brand-accent:         #2f5d8c;
+  --brand-accent-ink:     #ffffff;
+  --brand-accent-soft:    #dfeaf5;
+
+  /* Status */
+  --brand-positive:       #1c6b41;
+  --brand-warning:        #8a5a00;
+  --brand-negative:       #a32a1f;
+
+  /* The three technologies, so a laid route reads at a glance */
+  --brand-tech-lattice:   #3d6b93;
+  --brand-tech-tpylon:    #4a7c59;
+  --brand-tech-cable:     #7a5195;
+
+  /* Terrain fills. Muted on purpose so the route line stays the loudest
+     thing on the board. */
+  --brand-land-farmland:   #e6e9d5;
+  --brand-land-road:       #d8d8d4;
+  --brand-land-rocky:      #cbc4b8;
+  --brand-land-hilly:      #ddd8bd;
+  --brand-land-woodland:   #b6cdaa;
+  --brand-land-river:      #b9d6e6;
+  --brand-land-sssi:       #f0d98a;
+  --brand-land-settlement: #eab9a4;
+  --brand-land-customer:   #cfc0e6;
+  --brand-land-benefit:    #bfe0d0;
+  --brand-land-substation: #c3c3cb;
+  --brand-land-water:      #7fa9c4;
+
+  /* Type */
+  --brand-font: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  /* Shape */
+  --brand-radius: 8px;
+  --brand-radius-sm: 4px;
+}
+
+/* Dark theme. Only the chrome flips - the map keeps its daylight colours,
+   because a map that inverts is a map you have to relearn. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --brand-surface:        #131316;
+    --brand-surface-raised: #1c1c21;
+    --brand-ink:            #ececf0;
+    --brand-ink-muted:      #a3a3ae;
+    --brand-line:           #34343d;
+    --brand-accent:         #7fb0dd;
+    --brand-accent-ink:     #10161c;
+    --brand-accent-soft:    #23364a;
+    --brand-positive:       #6fc292;
+    --brand-warning:        #e0b45e;
+    --brand-negative:       #f0897c;
+  }
+}
+:root[data-theme="dark"] {
+  --brand-surface:        #131316;
+  --brand-surface-raised: #1c1c21;
+  --brand-ink:            #ececf0;
+  --brand-ink-muted:      #a3a3ae;
+  --brand-line:           #34343d;
+  --brand-accent:         #7fb0dd;
+  --brand-accent-ink:     #10161c;
+  --brand-accent-soft:    #23364a;
+  --brand-positive:       #6fc292;
+  --brand-warning:        #e0b45e;
+  --brand-negative:       #f0897c;
+}
+/* ============================ END BRAND TOKENS ========================== */
+
+
+/* -------------------------------------------------------------------------
+   Reset and page
+   ---------------------------------------------------------------------- */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  padding: clamp(1rem, 3vw, 2rem) clamp(0.75rem, 3vw, 2rem) 4rem;
+  background: var(--brand-surface);
+  color: var(--brand-ink);
+  font-family: var(--brand-font);
+  font-size: 1rem;
+  line-height: 1.55;
+}
+
+h1, h2, h3 { line-height: 1.25; margin: 0; }
+
+/* Visible only to screen readers. */
+.visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  overflow: hidden; white-space: nowrap;
+  clip: rect(0 0 0 0); clip-path: inset(50%);
+}
+
+/* A single, consistent focus treatment (WCAG 2.2 AA, 2.4.11 and 2.4.13). */
+:where(a, button, [tabindex]):focus-visible {
+  outline: 3px solid var(--brand-accent);
+  outline-offset: 2px;
+  border-radius: var(--brand-radius-sm);
+}
+
+
+/* -------------------------------------------------------------------------
+   Layout
+   ---------------------------------------------------------------------- */
+.page { max-width: 78rem; margin: 0 auto; }
+
+.masthead { margin-bottom: 1.75rem; }
+.masthead h1 { font-size: clamp(1.4rem, 4vw, 2rem); letter-spacing: -0.01em; }
+.masthead p {
+  margin: 0.35rem 0 0;
+  color: var(--brand-ink-muted);
+  max-width: 46rem;
+}
+
+.layout {
+  display: grid;
+  gap: clamp(1rem, 2.5vw, 1.75rem);
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+}
+/* Side panel moves alongside the board once there is room for it. */
+@media (min-width: 62rem) {
+  .layout { grid-template-columns: minmax(0, 1fr) 20rem; }
+}
+
+.panel {
+  background: var(--brand-surface-raised);
+  border: 1px solid var(--brand-line);
+  border-radius: var(--brand-radius);
+  padding: clamp(0.85rem, 2vw, 1.15rem);
+}
+.panel + .panel { margin-top: 1rem; }
+.panel h2 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--brand-ink-muted);
+  margin-bottom: 0.7rem;
+}
+
+
+/* -------------------------------------------------------------------------
+   The board
+   ---------------------------------------------------------------------- */
+.board-wrap { padding: clamp(0.4rem, 1.5vw, 0.75rem); }
+
+.board {
+  display: grid;
+  gap: 2px;
+  /* Column count is set inline from CONFIG.grid.cols so the map stays
+     editable from config.js alone. */
+}
+
+.board-row { display: contents; }
+
+.cell {
+  /* Layout */
+  position: relative;
+  aspect-ratio: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--brand-radius-sm);
+  /* Paint */
+  background: var(--brand-land-farmland);
+  color: inherit;
+  cursor: pointer;
+  /* The terrain icon */
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 66%;
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+.cell:disabled { cursor: default; }
+
+/* Terrain fills and icons. One rule per cell type in CONFIG.cellTypes. */
+.t-farmland   { background-color: var(--brand-land-farmland);   background-image: url("../img/farmland.svg"); }
+.t-road       { background-color: var(--brand-land-road);       background-image: url("../img/road.svg"); }
+.t-rocky      { background-color: var(--brand-land-rocky);      background-image: url("../img/rocky.svg"); }
+.t-hilly      { background-color: var(--brand-land-hilly);      background-image: url("../img/hilly.svg"); }
+.t-woodland   { background-color: var(--brand-land-woodland);   background-image: url("../img/woodland.svg"); }
+.t-river      { background-color: var(--brand-land-river);      background-image: url("../img/river.svg"); }
+.t-sssi       { background-color: var(--brand-land-sssi);       background-image: url("../img/sssi.svg"); }
+.t-settlement { background-color: var(--brand-land-settlement); background-image: url("../img/settlement.svg"); }
+.t-customer   { background-color: var(--brand-land-customer);   background-image: url("../img/customer.svg"); }
+.t-benefit    { background-color: var(--brand-land-benefit);    background-image: url("../img/benefit.svg"); }
+.t-substation { background-color: var(--brand-land-substation); background-image: url("../img/substation.svg"); }
+.t-water      { background-color: var(--brand-land-water);      background-image: url("../img/water.svg"); cursor: not-allowed; }
+
+/* Cells the route can legally reach next. Dashed ring, not colour alone. */
+.cell.is-available {
+  box-shadow: inset 0 0 0 2px var(--brand-accent);
+}
+.cell.is-available:hover { transform: scale(1.06); z-index: 2; }
+
+/* Cells that cannot be entered from here are dimmed, never hidden. */
+.cell.is-out-of-reach { opacity: 0.55; }
+
+/* The generation site and demand centre badges. */
+.cell.is-start, .cell.is-end {
+  background-size: 62%;
+  box-shadow: inset 0 0 0 3px var(--brand-ink);
+}
+.cell.is-start { background-image: url("../img/marker-generation.svg"); }
+.cell.is-end   { background-image: url("../img/marker-demand.svg"); }
+
+/* ---- the laid route ----------------------------------------------------
+   Each route cell draws up to two bars, from its centre out to whichever
+   neighbours it connects to. ::before is the vertical run, ::after the
+   horizontal one, so an elbow is simply half of each. */
+.cell.is-route { --wire: 30%; --tech: var(--brand-tech-lattice); }
+.cell.tech-lattice { --tech: var(--brand-tech-lattice); }
+.cell.tech-tpylon  { --tech: var(--brand-tech-tpylon); }
+.cell.tech-cable   { --tech: var(--brand-tech-cable); }
+
+.cell.is-route::before,
+.cell.is-route::after {
+  content: "";
+  position: absolute;
+  background: var(--tech);
+  border-radius: 2px;
+  z-index: 1;
+}
+/* vertical run: nothing by default, extended by conn-n / conn-s */
+.cell.is-route::before {
+  left: 50%; width: var(--wire); transform: translateX(-50%);
+  top: 50%; bottom: 50%;
+}
+.cell.is-route.conn-n::before { top: -1px; }
+.cell.is-route.conn-s::before { bottom: -1px; }
+
+/* horizontal run */
+.cell.is-route::after {
+  top: 50%; height: var(--wire); transform: translateY(-50%);
+  left: 50%; right: 50%;
+}
+.cell.is-route.conn-w::after { left: -1px; }
+.cell.is-route.conn-e::after { right: -1px; }
+
+/* Underground cable is drawn as a dotted run, so technology is not
+   signalled by colour alone. */
+.cell.is-route.tech-cable::before,
+.cell.is-route.tech-cable::after {
+  background-image: repeating-linear-gradient(
+    var(--angle, 0deg),
+    var(--tech) 0 4px,
+    transparent 4px 8px);
+  background-color: transparent;
+}
+.cell.is-route.tech-cable::before { --angle: 180deg; }
+.cell.is-route.tech-cable::after  { --angle: 90deg; }
+
+/* The working end of the route. */
+.cell.is-head { box-shadow: inset 0 0 0 3px var(--brand-accent); }
+
+
+/* -------------------------------------------------------------------------
+   Status and controls
+   ---------------------------------------------------------------------- */
+.status {
+  min-height: 3.2rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.92rem;
+}
+.status[data-tone="error"]   { color: var(--brand-negative); font-weight: 600; }
+.status[data-tone="warning"] { color: var(--brand-warning); font-weight: 600; }
+.status[data-tone="success"] { color: var(--brand-positive); font-weight: 600; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+.btn {
+  flex: 1 1 auto;
+  min-height: 2.75rem;   /* comfortably past the 24px target minimum, 2.5.8 */
+  padding: 0.55rem 0.9rem;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--brand-ink);
+  background: var(--brand-surface-raised);
+  border: 1px solid var(--brand-line);
+  border-radius: var(--brand-radius-sm);
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) { background: var(--brand-accent-soft); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+
+
+/* -------------------------------------------------------------------------
+   Legend
+   ---------------------------------------------------------------------- */
+.legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3rem; }
+.legend li { display: flex; align-items: center; gap: 0.55rem; font-size: 0.82rem; }
+.legend .swatch {
+  flex: none;
+  width: 1.55rem; height: 1.55rem;
+  border-radius: var(--brand-radius-sm);
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 74%;
+}
+.legend .swatch-label { flex: 1 1 auto; }
+.legend .swatch-nums {
+  color: var(--brand-ink-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.76rem;
+  white-space: nowrap;   /* keeps "1 / 0 / -8" on one line */
+}
+
+.legend-note {
+  margin: 0.6rem 0 0;
+  color: var(--brand-ink-muted);
+  font-size: 0.76rem;
+}
+
+
+/* -------------------------------------------------------------------------
+   Narrow screens, down to 390px
+   ---------------------------------------------------------------------- */
+@media (max-width: 40rem) {
+  body { padding-left: 0.6rem; padding-right: 0.6rem; }
+  .board { gap: 1px; }
+  .cell { border-radius: 2px; background-size: 72%; }
+  .board-wrap { padding: 0.35rem; }
+  .legend li { font-size: 0.78rem; }
+}
+
+
+/* -------------------------------------------------------------------------
+   Motion and contrast preferences
+   ---------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
+  .cell.is-available:hover { transform: none; }
+}
+
+@media (forced-colors: active) {
+  .cell { border: 1px solid CanvasText; }
+  .cell.is-route::before, .cell.is-route::after { background: Highlight; }
+  .cell.is-available { outline: 2px dashed Highlight; }
+}

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="River">
+  <title>River</title>
+  <g fill="none" stroke="#2c2c28" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2.5 7c3-2 5.5-2 8.5 0s5.5 2 8.5 0" stroke-width="2.2"/>
+    <path d="M2.5 12.5c3-2 5.5-2 8.5 0s5.5 2 8.5 0" stroke-width="2.2"/>
+    <path d="M2.5 18c3-2 5.5-2 8.5 0s5.5 2 8.5 0" stroke-width="2.2"/>
+  </g>
+</svg>

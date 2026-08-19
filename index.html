@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connecting the Grid</title>
+<meta name="description" content="Route a new electricity transmission connection across the map, and see what it costs in money, environment and community support.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="img/marker-generation.svg" type="image/svg+xml">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<div class="page">
+
+  <header class="masthead">
+    <h1 id="gameTitle">Connecting the Grid</h1>
+    <p id="gameStrapline">Route a new transmission connection from the generation site to the demand centre.</p>
+  </header>
+
+  <div class="layout">
+
+    <!-- The board -->
+    <section class="panel board-wrap" aria-labelledby="boardHeading">
+      <h2 id="boardHeading" class="visually-hidden">Route map</h2>
+      <div class="board" id="board"></div>
+    </section>
+
+    <!-- Side panel -->
+    <div>
+
+      <section class="panel" aria-labelledby="statusHeading">
+        <h2 id="statusHeading">Progress</h2>
+        <!-- Announced politely so a screen reader hears each move without
+             being interrupted mid-sentence. -->
+        <p class="status" id="status" role="status" aria-live="polite" data-tone="info"></p>
+      </section>
+
+      <section class="panel" aria-labelledby="controlsHeading">
+        <h2 id="controlsHeading">Controls</h2>
+        <div class="controls">
+          <button type="button" class="btn" id="undoButton">Undo last segment</button>
+          <button type="button" class="btn" id="resetButton">Start again</button>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="legendHeading">
+        <h2 id="legendHeading">What the land means</h2>
+        <ul class="legend" id="legend"></ul>
+        <p class="legend-note">
+          Numbers read cost / environment / community, per cell.
+        </p>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<!-- Plain scripts in dependency order. Deliberately not ES modules: module
+     scripts are blocked by CORS on file:// URLs, and this game has to run
+     when index.html is opened straight off the disk. -->
+<script src="js/config.js"></script>
+<script src="js/score.js"></script>
+<script src="js/render.js"></script>
+<script src="js/game.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Demand centre">
+  <title>Demand centre</title>
+  <g fill="none" stroke="#2c2c28" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 20.5h18"/>
+    <path d="M5.5 20.5V10L12 5.5 18.5 10v10.5"/>
+    <path d="M10 20.5v-5h4v5"/>
+  </g>
+</svg>

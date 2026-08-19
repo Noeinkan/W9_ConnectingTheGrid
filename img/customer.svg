@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Connection customer">
+  <title>Connection customer</title>
+  <g fill="none" stroke="#2c2c28" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M9 3.5v4M15 3.5v4"/>
+    <path d="M6.5 7.5h11v3.2a5.5 5.5 0 0 1-5.5 5.5 5.5 5.5 0 0 1-5.5-5.5z"/>
+    <path d="M12 16.2v4.3"/>
+  </g>
+</svg>

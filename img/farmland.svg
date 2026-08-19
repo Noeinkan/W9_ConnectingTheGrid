@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Farmland">
+  <title>Farmland</title>
+  <g fill="none" stroke="#2c2c28" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2.5 8.5c3-1.4 5.5-1.4 8.5 0s5.5 1.4 8.5 0"/>
+    <path d="M2.5 13c3-1.4 5.5-1.4 8.5 0s5.5 1.4 8.5 0"/>
+    <path d="M2.5 17.5c3-1.4 5.5-1.4 8.5 0s5.5 1.4 8.5 0"/>
+  </g>
+</svg>

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" role="img" aria-label="Designated land">
+  <title>Designated land</title>
+  <g fill="none" stroke="#2c2c28" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="9.5" stroke-dasharray="2.6 2.6"/>
+    <path d="M16 8c0 4.5-2.6 7.5-6.4 7.5H8V14c0-3.6 2.8-6 6.4-6z"/>
+    <path d="M8 16.5 13.5 10"/>
+  </g>
+</svg>
