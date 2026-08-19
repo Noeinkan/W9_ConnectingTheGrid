@@ -21,6 +21,7 @@
   /* Page chrome */
   --brand-surface:        #f7f7f5;
   --brand-surface-raised: #ffffff;
+  --brand-surface-sunk:   #ececed;
   --brand-ink:            #1d1d20;
   --brand-ink-muted:      #56565f;
   --brand-line:           #d6d6dc;
@@ -69,6 +70,7 @@
   :root:not([data-theme="light"]) {
     --brand-surface:        #131316;
     --brand-surface-raised: #1c1c21;
+    --brand-surface-sunk:   #101013;
     --brand-ink:            #ececf0;
     --brand-ink-muted:      #a3a3ae;
     --brand-line:           #34343d;
@@ -83,6 +85,7 @@
 :root[data-theme="dark"] {
   --brand-surface:        #131316;
   --brand-surface-raised: #1c1c21;
+  --brand-surface-sunk:   #101013;
   --brand-ink:            #ececf0;
   --brand-ink-muted:      #a3a3ae;
   --brand-line:           #34343d;
@@ -135,9 +138,9 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
 /* -------------------------------------------------------------------------
    Layout
    ---------------------------------------------------------------------- */
-.page { max-width: 78rem; margin: 0 auto; }
+.page { max-width: 84rem; margin: 0 auto; }
 
-.masthead { margin-bottom: 1.75rem; }
+.masthead { margin-bottom: 1.5rem; }
 .masthead h1 { font-size: clamp(1.4rem, 4vw, 2rem); letter-spacing: -0.01em; }
 .masthead p {
   margin: 0.35rem 0 0;
@@ -145,15 +148,27 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
   max-width: 46rem;
 }
 
-.layout {
+/* Sidebar first on narrow screens, alongside once there is room. */
+.game-shell {
   display: grid;
   gap: clamp(1rem, 2.5vw, 1.75rem);
   grid-template-columns: minmax(0, 1fr);
   align-items: start;
 }
-/* Side panel moves alongside the board once there is room for it. */
-@media (min-width: 62rem) {
-  .layout { grid-template-columns: minmax(0, 1fr) 20rem; }
+@media (min-width: 64rem) {
+  .game-shell { grid-template-columns: 19rem minmax(0, 1fr); }
+}
+
+.sidebar { display: grid; gap: 0.75rem; }
+.board-area { display: grid; gap: 0.75rem; min-width: 0; }
+
+.board-foot {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: minmax(0, 1fr);
+}
+@media (min-width: 44rem) {
+  .board-foot { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
 }
 
 .panel {
@@ -162,13 +177,239 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
   border-radius: var(--brand-radius);
   padding: clamp(0.85rem, 2vw, 1.15rem);
 }
-.panel + .panel { margin-top: 1rem; }
 .panel h2 {
   font-size: 0.8rem;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--brand-ink-muted);
   margin-bottom: 0.7rem;
+}
+
+.hint {
+  margin: 0.7rem 0 0;
+  color: var(--brand-ink-muted);
+  font-size: 0.78rem;
+}
+
+
+/* -------------------------------------------------------------------------
+   Tabs
+   ---------------------------------------------------------------------- */
+.tabs { display: flex; gap: 0.35rem; }
+
+.tab {
+  flex: 1 1 auto;
+  min-height: 2.75rem;
+  padding: 0.5rem 0.8rem;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--brand-ink);
+  background: var(--brand-surface-raised);
+  border: 1px solid var(--brand-line);
+  border-radius: var(--brand-radius) var(--brand-radius) 0 0;
+  cursor: pointer;
+}
+.tab:hover { background: var(--brand-accent-soft); }
+.tab-home { background: var(--brand-accent); color: var(--brand-accent-ink); border-color: var(--brand-accent); }
+.tab-home:hover { filter: brightness(1.12); background: var(--brand-accent); }
+
+
+/* -------------------------------------------------------------------------
+   The route, drawn in CSS
+   -------------------------------------------------------------------------
+   Deliberately NOT scoped to .cell. The same three rules draw a laid piece
+   on the board and the little picture on a palette tile, so there is exactly
+   one place where a piece's shape is defined and no track images to keep in
+   step with CONFIG.pieces.
+
+   An element carrying .is-route draws up to two bars, from its centre out to
+   whichever sides it opens on. ::before is the vertical run and ::after the
+   horizontal one, so a corner is simply half of each.
+   ---------------------------------------------------------------------- */
+.is-route { --wire: 30%; --tech: var(--brand-tech-lattice); position: relative; }
+
+.tech-lattice { --tech: var(--brand-tech-lattice); }
+.tech-tpylon  { --tech: var(--brand-tech-tpylon); }
+.tech-cable   { --tech: var(--brand-tech-cable); }
+
+.is-route::before,
+.is-route::after {
+  content: "";
+  position: absolute;
+  background: var(--tech);
+  border-radius: 2px;
+  z-index: 1;
+}
+/* vertical run: nothing by default, extended by conn-n / conn-s */
+.is-route::before {
+  left: 50%; width: var(--wire); transform: translateX(-50%);
+  top: 50%; bottom: 50%;
+}
+.is-route.conn-n::before { top: -1px; }
+.is-route.conn-s::before { bottom: -1px; }
+
+/* horizontal run */
+.is-route::after {
+  top: 50%; height: var(--wire); transform: translateY(-50%);
+  left: 50%; right: 50%;
+}
+.is-route.conn-w::after { left: -1px; }
+.is-route.conn-e::after { right: -1px; }
+
+/* Underground cable is drawn as a dotted run, so technology is not
+   signalled by colour alone. */
+.is-route.tech-cable::before,
+.is-route.tech-cable::after {
+  background-image: repeating-linear-gradient(
+    var(--angle, 0deg),
+    var(--tech) 0 4px,
+    transparent 4px 8px);
+  background-color: transparent;
+}
+.is-route.tech-cable::before { --angle: 180deg; }
+.is-route.tech-cable::after  { --angle: 90deg; }
+
+
+/* -------------------------------------------------------------------------
+   The palette
+   ---------------------------------------------------------------------- */
+.palette {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.piece {
+  position: relative;
+  aspect-ratio: 1;
+  min-height: 2.75rem;
+  padding: 0.3rem;
+  background: var(--brand-surface-raised);
+  border: 2px solid var(--brand-line);
+  border-radius: var(--brand-radius-sm);
+  cursor: grab;
+}
+.piece:hover { border-color: var(--brand-accent); }
+.piece:active { cursor: grabbing; }
+
+/* The track picture inside the tile. Inherits --tech from the tile. */
+.piece-art { position: absolute; inset: 0.3rem; }
+
+/* Armed: this is the piece that the next click on the board will place. */
+.piece.is-armed {
+  border-color: var(--brand-accent);
+  background: var(--brand-accent-soft);
+  box-shadow: inset 0 0 0 2px var(--brand-accent);
+}
+
+/* A piece that will not fit the next square. Dimmed AND hatched, so it does
+   not rely on colour alone (WCAG 2.2 AA, 1.4.1). It stays clickable: asking
+   for it is how you get told why it does not fit. */
+.piece.is-unusable { opacity: 0.4; cursor: not-allowed; }
+.piece.is-unusable::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    45deg,
+    transparent 0 5px,
+    var(--brand-ink-muted) 5px 6px);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+
+/* -------------------------------------------------------------------------
+   The technology picker
+   ---------------------------------------------------------------------- */
+.tech-picker { display: grid; gap: 0.4rem; }
+
+.tech {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: "swatch label" "swatch summary";
+  align-items: center;
+  gap: 0 0.6rem;
+  min-height: 2.75rem;
+  padding: 0.45rem 0.6rem;
+  text-align: left;
+  font: inherit;
+  color: var(--brand-ink);
+  background: var(--brand-surface-raised);
+  border: 2px solid var(--brand-line);
+  border-radius: var(--brand-radius-sm);
+  cursor: pointer;
+}
+.tech:hover { border-color: var(--brand-accent); }
+
+.tech-swatch {
+  grid-area: swatch;
+  width: 1.1rem; height: 1.1rem;
+  border-radius: 50%;
+  background: var(--tech);
+}
+.tech-label   { grid-area: label; font-size: 0.85rem; font-weight: 600; }
+.tech-summary { grid-area: summary; font-size: 0.72rem; color: var(--brand-ink-muted); }
+
+/* The chosen technology. Marked by a tick as well as a border, so the state
+   is not carried by colour alone. */
+.tech.is-chosen {
+  border-color: var(--brand-accent);
+  background: var(--brand-accent-soft);
+}
+.tech.is-chosen .tech-label::after {
+  content: " \2713";
+  color: var(--brand-accent);
+  font-weight: 700;
+}
+
+
+/* -------------------------------------------------------------------------
+   The meters
+   -------------------------------------------------------------------------
+   Poor on the left, good on the right, matching the 0-100 dials in score.js.
+   The marker's POSITION carries the value; the colour bands only reinforce
+   it, and the tick marks show where the bands change without needing colour.
+   ---------------------------------------------------------------------- */
+.meters { display: grid; gap: 0.6rem; }
+
+.meter { display: grid; gap: 0.25rem; }
+
+.meter-label { font-size: 0.8rem; font-weight: 600; }
+
+.meter-bar {
+  position: relative;
+  height: 0.85rem;
+  margin-top: 0.55rem;   /* room for the marker sitting above the bar */
+  border: 1px solid var(--brand-line);
+  border-radius: var(--brand-radius-sm);
+  background: linear-gradient(to right,
+    var(--brand-negative) 0 30%,
+    var(--brand-warning)  30% 70%,
+    var(--brand-positive) 70% 100%);
+}
+
+/* Band boundaries at 30 and 70, to match CONFIG.bands. */
+.meter-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to right, transparent 0 calc(30% - 1px), var(--brand-surface-raised) calc(30% - 1px) 30%, transparent 30%),
+    linear-gradient(to right, transparent 0 calc(70% - 1px), var(--brand-surface-raised) calc(70% - 1px) 70%, transparent 70%);
+}
+
+.meter-marker {
+  position: absolute;
+  top: -0.5rem;
+  left: 0;
+  width: 0; height: 0;
+  transform: translateX(-50%);
+  border-left: 0.4rem solid transparent;
+  border-right: 0.4rem solid transparent;
+  border-top: 0.5rem solid var(--brand-ink);
+  transition: left 180ms ease;
 }
 
 
@@ -205,7 +446,7 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
   transition: transform 120ms ease, box-shadow 120ms ease;
 }
 
-.cell:disabled { cursor: default; }
+.cell[aria-disabled="true"] { cursor: default; }
 
 /* Terrain fills and icons. One rule per cell type in CONFIG.cellTypes. */
 .t-farmland   { background-color: var(--brand-land-farmland);   background-image: url("../img/farmland.svg"); }
@@ -221,14 +462,20 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
 .t-substation { background-color: var(--brand-land-substation); background-image: url("../img/substation.svg"); }
 .t-water      { background-color: var(--brand-land-water);      background-image: url("../img/water.svg"); cursor: not-allowed; }
 
-/* Cells the route can legally reach next. Dashed ring, not colour alone. */
-.cell.is-available {
-  box-shadow: inset 0 0 0 2px var(--brand-accent);
+/* The one square the next piece goes on. There is never more than one, so it
+   can afford to be loud. */
+.cell.is-target {
+  box-shadow: inset 0 0 0 3px var(--brand-accent);
+  animation: target-pulse 1.8s ease-in-out infinite;
+  z-index: 2;
 }
-.cell.is-available:hover { transform: scale(1.06); z-index: 2; }
+.cell.is-target:hover { transform: scale(1.06); }
+.cell.is-dragover { transform: scale(1.1); box-shadow: inset 0 0 0 4px var(--brand-accent); }
 
-/* Cells that cannot be entered from here are dimmed, never hidden. */
-.cell.is-out-of-reach { opacity: 0.55; }
+@keyframes target-pulse {
+  0%, 100% { box-shadow: inset 0 0 0 3px var(--brand-accent); }
+  50%      { box-shadow: inset 0 0 0 3px var(--brand-accent), 0 0 0 3px var(--brand-accent-soft); }
+}
 
 /* The generation site and demand centre badges. */
 .cell.is-start, .cell.is-end {
@@ -238,64 +485,28 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
 .cell.is-start { background-image: url("../img/marker-generation.svg"); }
 .cell.is-end   { background-image: url("../img/marker-demand.svg"); }
 
-/* ---- the laid route ----------------------------------------------------
-   Each route cell draws up to two bars, from its centre out to whichever
-   neighbours it connects to. ::before is the vertical run, ::after the
-   horizontal one, so an elbow is simply half of each. */
-.cell.is-route { --wire: 30%; --tech: var(--brand-tech-lattice); }
-.cell.tech-lattice { --tech: var(--brand-tech-lattice); }
-.cell.tech-tpylon  { --tech: var(--brand-tech-tpylon); }
-.cell.tech-cable   { --tech: var(--brand-tech-cable); }
+/* A laid piece hides the marker badge underneath it. */
+.cell.is-route.is-start, .cell.is-route.is-end { background-image: none; }
 
-.cell.is-route::before,
-.cell.is-route::after {
-  content: "";
-  position: absolute;
-  background: var(--tech);
-  border-radius: 2px;
-  z-index: 1;
-}
-/* vertical run: nothing by default, extended by conn-n / conn-s */
-.cell.is-route::before {
-  left: 50%; width: var(--wire); transform: translateX(-50%);
-  top: 50%; bottom: 50%;
-}
-.cell.is-route.conn-n::before { top: -1px; }
-.cell.is-route.conn-s::before { bottom: -1px; }
-
-/* horizontal run */
-.cell.is-route::after {
-  top: 50%; height: var(--wire); transform: translateY(-50%);
-  left: 50%; right: 50%;
-}
-.cell.is-route.conn-w::after { left: -1px; }
-.cell.is-route.conn-e::after { right: -1px; }
-
-/* Underground cable is drawn as a dotted run, so technology is not
-   signalled by colour alone. */
-.cell.is-route.tech-cable::before,
-.cell.is-route.tech-cable::after {
-  background-image: repeating-linear-gradient(
-    var(--angle, 0deg),
-    var(--tech) 0 4px,
-    transparent 4px 8px);
-  background-color: transparent;
-}
-.cell.is-route.tech-cable::before { --angle: 180deg; }
-.cell.is-route.tech-cable::after  { --angle: 90deg; }
-
-/* The working end of the route. */
-.cell.is-head { box-shadow: inset 0 0 0 3px var(--brand-accent); }
+/* The working end of the route. Deliberately quieter than .is-target: the
+   pulsing accent ring has to mean "the next piece goes here" and nothing
+   else, or the two squares read as the same invitation. */
+.cell.is-head { box-shadow: inset 0 0 0 2px var(--brand-ink-muted); }
 
 
 /* -------------------------------------------------------------------------
    Status and controls
    ---------------------------------------------------------------------- */
 .status {
-  min-height: 3.2rem;
+  min-height: 2.6rem;
+  margin: 0;
   display: flex;
   align-items: center;
   gap: 0.6rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--brand-radius);
+  background: var(--brand-surface-raised);
+  border: 1px solid var(--brand-line);
   font-size: 0.92rem;
 }
 .status[data-tone="error"]   { color: var(--brand-negative); font-weight: 600; }
@@ -319,6 +530,33 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
 }
 .btn:hover:not(:disabled) { background: var(--brand-accent-soft); }
 .btn:disabled { opacity: 0.45; cursor: default; }
+.btn[hidden] { display: none; }
+
+
+/* -------------------------------------------------------------------------
+   Dialogs
+   ---------------------------------------------------------------------- */
+.sheet {
+  max-width: 34rem;
+  width: calc(100% - 2rem);
+  padding: clamp(1rem, 3vw, 1.6rem);
+  color: var(--brand-ink);
+  background: var(--brand-surface-raised);
+  border: 1px solid var(--brand-line);
+  border-radius: var(--brand-radius);
+}
+.sheet::backdrop { background: rgb(0 0 0 / 0.5); }
+.sheet h2 { font-size: 1.15rem; margin-bottom: 0.6rem; }
+.sheet p { margin: 0 0 0.7rem; }
+.sheet form { margin-top: 1rem; display: flex; }
+
+.sheet-eyebrow {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--brand-ink-muted);
+  margin-bottom: 0.2rem;
+}
 
 
 /* -------------------------------------------------------------------------
@@ -358,6 +596,7 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
   .cell { border-radius: 2px; background-size: 72%; }
   .board-wrap { padding: 0.35rem; }
   .legend li { font-size: 0.78rem; }
+  .palette { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 
@@ -366,11 +605,16 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
    ---------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
   * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
-  .cell.is-available:hover { transform: none; }
+  .cell.is-target:hover, .cell.is-dragover { transform: none; }
+  .cell.is-target { animation: none; }
 }
 
 @media (forced-colors: active) {
   .cell { border: 1px solid CanvasText; }
-  .cell.is-route::before, .cell.is-route::after { background: Highlight; }
-  .cell.is-available { outline: 2px dashed Highlight; }
+  .is-route::before, .is-route::after { background: Highlight; }
+  .cell.is-target { outline: 3px solid Highlight; }
+  .piece.is-armed { outline: 3px solid Highlight; }
+  .piece.is-unusable { opacity: 1; }
+  .meter-bar { border: 1px solid CanvasText; forced-color-adjust: none; }
+  .meter-marker { border-top-color: CanvasText; }
 }

@@ -31,17 +31,74 @@ var CONFIG = {
     rows: 9
   },
 
-  // Where the new connection begins: the generation site, on the left edge.
-  start: { col: 0, row: 4 },
+  /* Where the new connection begins. 'entry' is the side of that square the
+     line arrives on, so the first piece laid must have an opening facing it.
+     With the start on column 0, 'w' means the line comes in from the
+     generation site off the left edge. */
+  start: { col: 0, row: 4, entry: 'w' },
 
-  // Where it must end: the demand centre, on the right edge.
-  end: { col: 10, row: 4 },
+  /* Where it must end: the demand centre, on the right edge. 'exit' is the
+     side the line must leave by, so the last piece must open that way. */
+  end: { col: 10, row: 4, exit: 'e' },
 
   // The badges drawn on those two cells.
   markers: {
     start: { icon: 'img/marker-generation.svg' },
     end: { icon: 'img/marker-demand.svg' }
   },
+
+
+  /* -----------------------------------------------------------------------
+     PIECES
+     The six shapes in the palette. A piece is nothing but its two open ends,
+     drawn from n (north/up), e (east/right), s (south/down), w (west/left).
+
+     There are exactly six ways to pick two of the four sides, so these six
+     pieces cover every straight and every corner. Do not expect to add a
+     seventh - there isn't one. You can reorder them, or reword the labels.
+
+       connectors  the two sides the track opens onto
+       label       the name shown in the palette
+       aria        how the piece is read out to a screen reader
+     --------------------------------------------------------------------- */
+  pieces: [
+    {
+      id: 'ew',
+      connectors: ['e', 'w'],
+      label: 'Straight across',
+      aria: 'Straight piece running left to right.'
+    },
+    {
+      id: 'ns',
+      connectors: ['n', 's'],
+      label: 'Straight up',
+      aria: 'Straight piece running top to bottom.'
+    },
+    {
+      id: 'es',
+      connectors: ['e', 's'],
+      label: 'Corner, right to down',
+      aria: 'Corner piece joining the right side to the bottom.'
+    },
+    {
+      id: 'sw',
+      connectors: ['s', 'w'],
+      label: 'Corner, down to left',
+      aria: 'Corner piece joining the bottom to the left side.'
+    },
+    {
+      id: 'wn',
+      connectors: ['w', 'n'],
+      label: 'Corner, left to up',
+      aria: 'Corner piece joining the left side to the top.'
+    },
+    {
+      id: 'ne',
+      connectors: ['n', 'e'],
+      label: 'Corner, up to right',
+      aria: 'Corner piece joining the top to the right side.'
+    }
+  ],
 
 
   /* -----------------------------------------------------------------------
@@ -212,7 +269,6 @@ var CONFIG = {
       costMult: 1.0,
       impactMult: 1.0,
       bansTerrain: [],
-      icon: 'img/tech-lattice.svg',
       summary: 'Standard cost, full impact',
       description: 'The conventional steel tower. Cheapest to build, and the most visible in the landscape.'
     },
@@ -223,7 +279,6 @@ var CONFIG = {
       costMult: 1.4,
       impactMult: 0.7,
       bansTerrain: [],
-      icon: 'img/tech-tpylon.svg',
       summary: '1.4x cost, 0.7x impact',
       description: 'A shorter single-shaft design with a smaller footprint. Costs more, but sits far more quietly.'
     },
@@ -234,7 +289,6 @@ var CONFIG = {
       costMult: 6.0,
       impactMult: 0.2,
       bansTerrain: ['river'],
-      icon: 'img/tech-cable.svg',
       summary: '6x cost, 0.2x impact, no rivers',
       description: 'Buried out of sight entirely. Enormously expensive, and it cannot be taken through a river.'
     }
@@ -250,10 +304,13 @@ var CONFIG = {
   rules: {
     // The route must pass through at least one substation to be energised.
     requireSubstation: true,
-    // Orthogonal movement only. Set true to allow diagonal moves.
-    allowDiagonals: false,
     // The route may never re-enter a cell it has already used.
-    allowRevisit: false
+    allowRevisit: false,
+    /* Set false for the strictest version of the game: once a piece is down
+       it stays down, and the only way back is Start again. Left true here
+       because undo is also how a keyboard or screen reader user recovers
+       from a misplaced piece. */
+    allowUndo: true
   },
 
 
@@ -400,26 +457,43 @@ var CONFIG = {
     startLabel: 'Generation site',
     endLabel: 'Demand centre',
 
-    techHeading: 'Choose your technology',
-    techHint: 'Pick a technology, then click the next cell in your route. You can change technology at any point.',
+    // Sidebar tabs
+    tabHome: 'Home',
+    tabInstructions: 'Instructions',
 
-    dialsHeading: 'Live score',
+    // The palette
+    piecesHeading: 'Pieces',
+    piecesHint: 'Pick your route carefully. The more pieces you use, the more it will cost.',
+    piecesLabel: 'Track pieces',
+
+    techHeading: 'Choose your technology',
+    techHint: 'Pick a technology, then place a piece. You can change technology at any point.',
+
+    dialsHeading: 'Points',
     controlsHeading: 'Controls',
 
-    undo: 'Undo last segment',
+    undo: 'Undo last piece',
     reset: 'Start again',
+    closeButton: 'Close',
 
-    statusReady: 'Choose a technology, then click a cell next to the generation site.',
-    statusRouting: '{n} segments laid. Keep going to the demand centre on the right.',
+    statusReady: 'Choose a piece, then drop it on the highlighted square to get going.',
+    statusArmed: '{piece} selected. Drop it on the highlighted square.',
+    statusRouting: '{n} pieces laid. Keep going to the demand centre on the right.',
     statusComplete: 'Connection energised.',
+    statusStuck: 'The line has nowhere to go from here. Undo the last piece, or start again.',
     statusNotEnergised: 'You have reached the demand centre, but the route does not pass through a substation. Undo and route through one.',
+    statusWrongEndPiece: 'You have reached the demand centre, but the line does not run into it. The last piece needs an opening on the right.',
 
-    errNotAdjacent: 'Pick a cell directly next to the end of your route. No diagonals.',
+    errNoPiece: 'Choose a piece from the palette first.',
+    errWrongSquare: 'That is not where the line goes next. Use the highlighted square.',
+    errPieceDoesNotFit: 'That piece does not line up. You need one that opens towards the {side}.',
+    errStartPiece: 'The line comes in from the {side}, so the first piece must open that way.',
     errAlreadyUsed: 'The route already runs through that cell.',
     errImpassable: 'The route cannot cross open water.',
     errTechBanned: '{tech} cannot be used on {terrain}.',
     errNoRoute: 'There is nothing to undo yet.',
-    errComplete: 'The connection is finished. Undo a segment or start again.',
+    errUndoDisabled: 'Pieces cannot be removed once they are laid. Start again to change your route.',
+    errComplete: 'The connection is finished. Undo a piece or start again.',
 
     substationReminder: 'The route must pass through a substation.',
     substationMet: 'Substation reached.',
@@ -427,16 +501,32 @@ var CONFIG = {
     legendHeading: 'What the land means',
     verdictHeading: 'Verdict',
 
+    // Read out for the four compass directions, in the errors above.
+    sides: { n: 'top', e: 'right', s: 'bottom', w: 'left' },
+
+    // The instructions overlay. Each string is one paragraph.
+    instructionsHeading: 'How to play',
+    instructions: [
+      'Lay your line starting at the generation site and finish at the demand centre.',
+      'Choose a piece from the palette, then drop it on the highlighted square. Each piece only fits if its openings line up with the line you have already laid.',
+      'Try to avoid protected land and built-up areas. Watch the three meters as you build.',
+      'The line must pass through a substation to be energised.',
+      'If you want to start again, use the Home button.',
+      'Good luck!'
+    ],
+
     // How each cell is described to a screen reader. The {braces} are filled
     // in by the game, so keep them exactly as they are.
     cellPosition: 'Column {col}, row {row}.',
     cellTerrain: '{terrain}. Cost {cost}, environment {env}, community {comm}.',
-    cellRouted: 'Segment {n} of the route, carried on {tech}.',
-    cellAvailable: 'Available as the next step.',
-    cellUnavailable: 'Not reachable from the end of the route.',
+    cellRouted: 'Piece {n} of the route, {piece}, carried on {tech}.',
+    cellAvailable: 'This is where the next piece goes.',
     cellIsStart: 'Generation site, where the route begins.',
     cellIsEnd: 'Demand centre, where the route must finish.',
     cellIsHead: 'End of the route so far.',
+
+    // The three meters.
+    meterReading: '{label}: {value} out of 100, {band}.',
 
     boardLabel: 'Route map, {cols} columns by {rows} rows'
   },

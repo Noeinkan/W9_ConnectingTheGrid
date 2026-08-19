@@ -69,6 +69,18 @@ var Score = (function (CFG) {
     return tech.bansTerrain.indexOf(typeId) === -1;
   }
 
+  function piece(pieceId) {
+    for (var i = 0; i < CFG.pieces.length; i++) {
+      if (CFG.pieces[i].id === pieceId) { return CFG.pieces[i]; }
+    }
+    throw new Error('Unknown piece: ' + pieceId);
+  }
+
+  // Does this piece have an opening on the given side?
+  function pieceOpens(pieceId, side) {
+    return piece(pieceId).connectors.indexOf(side) !== -1;
+  }
+
   /* ---------------------------------------------------------------------
      The map, turned from letters into a grid of cell type ids
      ------------------------------------------------------------------- */
@@ -124,16 +136,44 @@ var Score = (function (CFG) {
       }
     }
 
+    var SIDES = ['n', 'e', 's', 'w'];
     var ends = [
-      { name: 'start (generation site)', at: CFG.start },
-      { name: 'end (demand centre)', at: CFG.end }
+      { name: 'start (generation site)', at: CFG.start, sideKey: 'entry' },
+      { name: 'end (demand centre)', at: CFG.end, sideKey: 'exit' }
     ];
     for (var e = 0; e < ends.length; e++) {
-      var type = typeAt(ends[e].at.col, ends[e].at.row);
+      var end = ends[e];
+      var type = typeAt(end.at.col, end.at.row);
       if (!type) {
-        problems.push('The ' + ends[e].name + ' is outside the map');
+        problems.push('The ' + end.name + ' is outside the map');
       } else if (!type.passable) {
-        problems.push('The ' + ends[e].name + ' sits on ' + type.label + ', which cannot be entered');
+        problems.push('The ' + end.name + ' sits on ' + type.label + ', which cannot be entered');
+      }
+
+      // The side the line joins on, and whether any piece can actually do it.
+      var side = end.at[end.sideKey];
+      if (SIDES.indexOf(side) === -1) {
+        problems.push('The ' + end.name + ' has ' + end.sideKey + ' "' + side +
+                      '", which is not one of n, e, s, w');
+      } else {
+        var usable = CFG.pieces.filter(function (p) {
+          return p.connectors.indexOf(side) !== -1;
+        });
+        if (usable.length === 0) {
+          problems.push('The ' + end.name + ' needs a piece opening to the ' + side +
+                        ', but no piece in CONFIG.pieces has one');
+        }
+      }
+    }
+
+    // Every piece must open on exactly two different sides.
+    for (var p = 0; p < CFG.pieces.length; p++) {
+      var shape = CFG.pieces[p];
+      var conns = shape.connectors;
+      if (conns.length !== 2 || conns[0] === conns[1] ||
+          SIDES.indexOf(conns[0]) === -1 || SIDES.indexOf(conns[1]) === -1) {
+        problems.push('Piece "' + shape.id + '" must have exactly two different ' +
+                      'connectors drawn from n, e, s, w');
       }
     }
 
@@ -315,6 +355,8 @@ var Score = (function (CFG) {
     cellType: cellType,
     technology: technology,
     canUseTech: canUseTech,
+    piece: piece,
+    pieceOpens: pieceOpens,
     scoreSegment: scoreSegment,
     scoreRoute: scoreRoute,
     dialsFor: dialsFor,
