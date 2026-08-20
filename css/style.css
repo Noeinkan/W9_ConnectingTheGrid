@@ -56,6 +56,7 @@
   --brand-land-settlement: #e5ab90;
   --brand-land-customer:   #d5c3ec;
   --brand-land-benefit:    #a5ddc0;
+  --brand-land-grant:      #f2d9a8;
   --brand-land-substation: #c6c5d2;
   --brand-land-water:      #4e97c4;
 
@@ -277,6 +278,75 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
   color: var(--brand-ink);
 }
 
+/* One plain checkbox. The game has exactly one setting worth having and it
+   does not need a control of its own invention to carry it. */
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.switch input { flex: none; width: 0.95rem; height: 0.95rem; accent-color: var(--brand-accent); }
+
+/* Typing a landscape's name to play it again. Small and quiet: it is a
+   way back to a landscape, not a headline control. */
+.seed-form {
+  display: flex;
+  gap: 0.3rem;
+  margin: 0.35rem 0.2rem 0;
+}
+.seed-form input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.2rem 0.4rem;
+  font: inherit;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brand-ink);
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-line);
+  border-radius: var(--brand-radius-sm);
+}
+.btn-small { padding: 0.2rem 0.5rem; font-size: 0.72rem; }
+
+/* The result as text, for when the clipboard will not take it. */
+.sheet-share { display: block; margin-top: 0.8rem; }
+.sheet-share span {
+  display: block;
+  margin-bottom: 0.3rem;
+  font-size: 0.78rem;
+  color: var(--brand-ink-muted);
+}
+.sheet-share textarea {
+  width: 100%;
+  padding: 0.5rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--brand-ink);
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-line);
+  border-radius: var(--brand-radius-sm);
+  resize: vertical;
+}
+
+/* How hard the landscape is, from the balance search that accepted it. */
+.difficulty {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--brand-accent-ink);
+  background: var(--brand-accent);
+  border-radius: 999px;
+}
+
 
 /* -------------------------------------------------------------------------
    The meters
@@ -297,6 +367,16 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
 .meter-label { font-size: 0.78rem; font-weight: 600; }
 .meter-value {
   font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-ink-muted);
+}
+
+/* What has been spent, against what there was. Sits under the bar, quieter
+   than the dial reading above it. */
+.meter-spend {
+  grid-column: 1 / -1;
+  margin-top: 0.2rem;
+  font-size: 0.66rem;
   font-variant-numeric: tabular-nums;
   color: var(--brand-ink-muted);
 }
@@ -334,6 +414,39 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
   border-right: 0.35rem solid transparent;
   border-top: 0.45rem solid var(--brand-ink);
   transition: left 180ms ease;
+  z-index: 2;
+}
+
+/* Where the dial lands if the highlighted square is built on the
+   technology currently chosen.
+
+   Drawn inside the bar rather than above it, so it cannot be mistaken for
+   the reading itself - that is the solid triangle's job, and the two must
+   stay tellable apart at a glance. The direction of the move is carried by
+   WHICH SIDE of the marker it falls on; the colour only agrees with it, and
+   is never the only thing saying so. */
+.meter-preview {
+  position: absolute;
+  top: -3px; bottom: -3px;
+  left: 0;
+  width: 3px;
+  transform: translateX(-50%);
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--brand-ink) 0 4px,
+    transparent 4px 6px);
+  /* An edge on both sides, so the line stays readable wherever it falls -
+     it crosses three band colours and has to hold against all of them. */
+  box-shadow: 0 0 0 1px var(--brand-surface-raised);
+  border-radius: 1px;
+  transition: left 180ms ease;
+  z-index: 1;
+}
+.meter-preview[data-way="worse"] {
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--brand-negative) 0 4px,
+    transparent 4px 6px);
 }
 
 
@@ -487,6 +600,19 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
   box-shadow: 0 2px 7px rgb(0 0 0 / 0.3);
   pointer-events: none;
 }
+/* The badge from CONFIG.markers, set alongside the words rather than
+   instead of them: the icon says which end at a glance, the text says it
+   unambiguously. */
+.cell-flag-icon {
+  display: inline-block;
+  vertical-align: -0.15em;
+  width: 0.95em; height: 0.95em;
+  margin-right: 0.25em;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+
 .cell-flag::after {          /* the little tail, pointing at the square */
   content: "";
   position: absolute;
@@ -518,14 +644,10 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
    farmland reads as fields rather than as an empty rectangle. */
 .art-mottle { fill: #4a5c2a; opacity: 0.2; mix-blend-mode: multiply; }
 
+/* Each region names its own brand token inline, from js/mapart.js, so that
+   adding a kind of ground does not mean adding a rule here. The tokens
+   themselves still live at the top of this file. */
 .art-region     { stroke: none; }
-.art-woodland   { fill: var(--brand-land-woodland); }
-.art-hilly      { fill: var(--brand-land-hilly); }
-.art-rocky      { fill: var(--brand-land-rocky); }
-.art-sssi       { fill: var(--brand-land-sssi); }
-.art-settlement { fill: var(--brand-land-settlement); }
-.art-river      { fill: var(--brand-land-river); }
-.art-water      { fill: var(--brand-land-water); }
 
 /* Raised ground gets a shadow to the south east. It is the one thing that
    makes a hill read as standing up rather than lying flat. */
@@ -555,12 +677,13 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
 .art-roof      { fill: var(--brand-art-roof); }
 .art-door      { fill: var(--brand-art-trunk); }
 
-/* Each landmark keeps its own ring colour, so the three read apart at a
-   glance and still read apart with the shape alone if colour is gone. */
+/* Each landmark keeps its own ring colour, so they read apart at a glance
+   and still read apart with the shape alone if colour is gone. */
 .art-disc            { fill: var(--brand-map-paper); stroke: rgb(44 44 40 / 0.7); stroke-width: 4; }
 .art-disc-substation { stroke: #4a4a58; }
 .art-disc-customer   { stroke: #6b4f9e; }
 .art-disc-benefit    { stroke: #2c7a52; }
+.art-disc-grant      { stroke: #9a6a1c; }
 .art-mark      { fill: var(--brand-art-ink); }
 .art-mark-hot  { fill: var(--brand-warning); }
 .art-mark-vein { stroke: var(--brand-map-paper); stroke-width: 5; stroke-linecap: round; }
@@ -579,6 +702,31 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
    Every casing is drawn before every body, so a run that changes technology
    cannot have its neighbour's casing painted over the top of it.
    ---------------------------------------------------------------------- */
+/* The best route the balance search found, shown after the game is over.
+
+   Deliberately quiet: it is a second opinion offered once, not a correction
+   drawn over the player's work. Dashed and hollow so it never reads as a
+   line that was built, and it sits in its own group underneath the real
+   one, so where the two agree the player's route is what shows. */
+.ghost-case, .ghost-run {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 4 13;
+}
+/* Drawn in the MAP's ink, not the interface's. The paper is pale whatever
+   theme the page is in, so a line that followed --brand-ink would vanish on
+   it every time the reader switched to dark. */
+.ghost-run {
+  stroke: var(--brand-art-ink);
+  stroke-width: 7;
+}
+.ghost-case {
+  stroke: var(--brand-map-paper);
+  stroke-width: 13;
+  opacity: 0.75;
+}
+
 .art-route .run-case {
   fill: none;
   stroke: var(--brand-map-paper);
@@ -755,7 +903,38 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
 .sheet::backdrop { background: rgb(0 0 0 / 0.5); }
 .sheet h2 { font-size: 1.15rem; margin-bottom: 0.6rem; }
 .sheet p { margin: 0 0 0.7rem; }
-.sheet form { margin-top: 1rem; display: flex; }
+.sheet form { margin: 0; display: flex; }
+
+/* The buttons at the foot of a sheet. The close button has to sit inside a
+   <form method="dialog"> to close the dialog without script, so the row is
+   a flex box around the form rather than the form itself. */
+.sheet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+/* How the route compares with the best one the checker found. Set apart
+   from the verdict prose: it is a reading, not an opinion. */
+.sheet-par {
+  margin: 0.9rem 0 0;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.82rem;
+  color: var(--brand-ink-muted);
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-line);
+  border-radius: var(--brand-radius-sm);
+}
+.sheet-par strong { color: var(--brand-ink); }
+
+.btn-primary {
+  background: var(--brand-accent, var(--brand-surface-raised));
+  border-color: var(--brand-accent, var(--brand-line));
+  color: var(--brand-accent-ink, var(--brand-ink));
+  font-weight: 700;
+}
 
 .sheet-lead {
   font-size: 0.95rem;
@@ -790,7 +969,8 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
   width: 1.3rem; height: 1.3rem;
   border-radius: var(--brand-radius-sm);
   background-color: var(--land, var(--brand-land-farmland));
-  background-image: var(--icon, none);
+  /* The image itself is set from js/render.js - see the note there about
+     why it cannot come through a custom property. */
   background-repeat: no-repeat;
   background-position: center;
   background-size: 74%;
@@ -803,27 +983,23 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
   white-space: nowrap;   /* keeps "1 / 0 / -8" on one line */
 }
 
+/* The preview reading in the tooltip: where the dials land if this square
+   is built. Set apart from the terrain's own numbers above it. */
+.tip-preview {
+  display: block;
+  margin-top: 0.35rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid rgb(255 255 255 / 0.2);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+}
+
 .legend-note {
   margin: 0.5rem 0 0;
   color: var(--brand-ink-muted);
   font-size: 0.7rem;
 }
 
-/* One rule per cell type in CONFIG.cellTypes. Only the legend uses these
-   now - the map itself is drawn in SVG - so they set nothing but the two
-   variables the swatch reads. */
-.t-farmland   { --land: var(--brand-land-farmland);   --icon: url("../img/farmland.svg"); }
-.t-road       { --land: var(--brand-land-road);       --icon: url("../img/road.svg"); }
-.t-rocky      { --land: var(--brand-land-rocky);      --icon: url("../img/rocky.svg"); }
-.t-hilly      { --land: var(--brand-land-hilly);      --icon: url("../img/hilly.svg"); }
-.t-woodland   { --land: var(--brand-land-woodland);   --icon: url("../img/woodland.svg"); }
-.t-river      { --land: var(--brand-land-river);      --icon: url("../img/river.svg"); }
-.t-sssi       { --land: var(--brand-land-sssi);       --icon: url("../img/sssi.svg"); }
-.t-settlement { --land: var(--brand-land-settlement); --icon: url("../img/settlement.svg"); }
-.t-customer   { --land: var(--brand-land-customer);   --icon: url("../img/customer.svg"); }
-.t-benefit    { --land: var(--brand-land-benefit);    --icon: url("../img/benefit.svg"); }
-.t-substation { --land: var(--brand-land-substation); --icon: url("../img/substation.svg"); }
-.t-water      { --land: var(--brand-land-water);      --icon: url("../img/water.svg"); }
 
 
 /* -------------------------------------------------------------------------
@@ -848,7 +1024,7 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
     overflow-x: auto;
     overflow-y: hidden;
   }
-  .legend-drawer, .seed-line { display: none; }
+  .legend-drawer, .seed-line, .seed-form { display: none; }
   .topbar h1 { font-size: 1rem; }
 }
 
@@ -903,4 +1079,11 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
   .tech.is-chosen { outline: 2px solid Highlight; }
   .meter-bar { border: 1px solid CanvasText; forced-color-adjust: none; }
   .meter-marker { border-top-color: CanvasText; }
+  /* The dashes survive forced colours; the gradient would not. */
+  /* Both selectors, because .meter-preview[data-way] out-specifies a bare
+     .meter-preview and a media query adds no specificity of its own. */
+  .meter-preview, .meter-preview[data-way] { background: CanvasText; }
+  /* The art layer is hidden under forced colours, and the ghost lives in
+     it, so there is nothing here to restyle - noted so the next person
+     does not go looking for why. */
 }

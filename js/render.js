@@ -33,6 +33,7 @@ var Render = (function (CFG, Score, MapArt) {
   var techTiles = {};  // technology buttons, by technology id
   var meterParts = {}; // meter marker/label elements, by dial id
   var routeLayer = null;
+  var ghostLayer = null;   // the best route found, drawn under the player's
   var handle = null;    // the callbacks game.js hands over in buildBoard
 
   var STEP = { n: [0, -1], e: [1, 0], s: [0, 1], w: [-1, 0] };
@@ -86,6 +87,7 @@ var Render = (function (CFG, Score, MapArt) {
   function buildMap(rows, features, seed) {
     var drawn = MapArt.draw(rows, features, seed);
     routeLayer = drawn.route;
+    ghostLayer = drawn.ghost;
     els.art.innerHTML = '';
     els.art.appendChild(drawn.svg);
 
@@ -102,11 +104,20 @@ var Render = (function (CFG, Score, MapArt) {
 
   /* The little "Generation site" / "Demand centre" pins. Hidden from screen
      readers, because the cell's own label already says the same thing. */
-  function addFlag(button, text, row) {
+  function addFlag(button, text, row, marker) {
     var flag = document.createElement('span');
     flag.className = 'cell-flag';
     flag.setAttribute('aria-hidden', 'true');
-    flag.textContent = text;
+
+    // The badge from CONFIG.markers, if one is set for this end.
+    if (marker && marker.icon) {
+      var badge = document.createElement('span');
+      badge.className = 'cell-flag-icon';
+      badge.style.backgroundImage = 'url("' + marker.icon + '")';
+      flag.appendChild(badge);
+    }
+
+    flag.appendChild(document.createTextNode(text));
     // On the top row there is nothing above to hang it from.
     if (row === 0) { flag.setAttribute('data-below', ''); }
     button.appendChild(flag);
@@ -155,10 +166,10 @@ var Render = (function (CFG, Score, MapArt) {
         });
 
         if (col === CFG.start.col && row === CFG.start.row) {
-          addFlag(button, copy.startLabel, row);
+          addFlag(button, copy.startLabel, row, CFG.markers && CFG.markers.start);
         }
         if (col === CFG.end.col && row === CFG.end.row) {
-          addFlag(button, copy.endLabel, row);
+          addFlag(button, copy.endLabel, row, CFG.markers && CFG.markers.end);
         }
 
         rowEl.appendChild(button);
@@ -332,8 +343,12 @@ var Render = (function (CFG, Score, MapArt) {
       button.className = 'chevron' + (exit.ok ? '' : ' is-dead');
       button.tabIndex = -1;
       button.setAttribute('aria-hidden', 'true');
+      var aheadId = Score.typeIdAt(exit.to.col, exit.to.row);
       button.title = exit.ok
-        ? fill(CFG.copy.chevronLabel, { side: CFG.copy.sides[exit.dir] })
+        ? fill(CFG.copy.chevronLabel, {
+            side: CFG.copy.sides[exit.dir],
+            terrain: aheadId ? CFG.cellTypes[aheadId].label.toLowerCase() : 'open ground'
+          })
         : CFG.copy.chevronDeadLabel;
 
       var step = STEP[exit.dir];
@@ -475,9 +490,51 @@ var Render = (function (CFG, Score, MapArt) {
     }));
   }
 
+  /* The best route the balance search found, drawn over the map once the
+     game is finished.
+
+     Built from exactly the same run-splitting and path-rounding as the
+     player's own line, so the two are directly comparable - a difference on
+     screen is a real difference in the route, not a difference in how it
+     was drawn. It leaves through the demand centre because every route the
+     search reports does. */
+  function paintGhostRoute(route) {
+    if (!ghostLayer) { return; }
+    ghostLayer.innerHTML = '';
+    if (!route || !route.length) { return; }
+
+    /* Two passes, for the same reason the real route has them: the casing
+       of one run must not be painted over the body of another. Here it also
+       keeps the line readable over dark woodland as well as pale fields. */
+    var paths = runsOf({ route: route, openEnd: CFG.end.exit }).map(function (run) {
+      return roundedPath(pointsFor(run), U * 0.24);
+    });
+
+    paths.forEach(function (d) {
+      ghostLayer.appendChild(svgNode('path', { class: 'ghost-case', d: d }));
+    });
+    paths.forEach(function (d) {
+      ghostLayer.appendChild(svgNode('path', { class: 'ghost-run', d: d }));
+    });
+  }
+
+  function clearGhostRoute() { paintGhostRoute(null); }
+
   /* ---------------------------------------------------------------------
      The land tooltip
      ------------------------------------------------------------------- */
+
+  /* The square the next span goes on, if the game has told us where that
+     is. Kept here so showTip can say what building it would do - the ghost
+     marker on the meters is invisible to a screen reader, and this is the
+     same reading in words. */
+  var preview = null;
+  var previewAt = null;
+
+  function setPreview(state) {
+    preview = state.preview || null;
+    previewAt = state.target ? { col: state.target.col, row: state.target.row } : null;
+  }
 
   function showTip(col, row) {
     var typeId = Score.typeIdAt(col, row);
@@ -497,6 +554,20 @@ var Render = (function (CFG, Score, MapArt) {
     els.tip.appendChild(name);
     els.tip.appendChild(description);
     els.tip.appendChild(nums);
+
+    // Only on the square actually in play, where it is a live reading
+    // rather than a hypothetical about a square the line cannot reach.
+    if (preview && previewAt && previewAt.col === col && previewAt.row === row) {
+      var ahead = document.createElement('span');
+      ahead.className = 'tip-preview';
+      ahead.textContent = fill(CFG.copy.tipPreview, {
+        tech: Score.technology(preview.techId).short,
+        cost: preview.dials.cost,
+        env: preview.dials.env,
+        comm: preview.dials.comm
+      });
+      els.tip.appendChild(ahead);
+    }
 
     els.tip.style.setProperty('--cx', col + 0.5);
     els.tip.style.setProperty('--cy', row + (row <= 1 ? 1 : 0));
@@ -576,6 +647,17 @@ var Render = (function (CFG, Score, MapArt) {
       bar.setAttribute('aria-valuemax', '100');
       bar.setAttribute('aria-label', dial.label + '. ' + dial.goodDirection);
 
+      /* Two markers. The solid one is where the dials stand; the ghost is
+         where they would stand if the highlighted square were built on the
+         technology currently chosen. Both are hidden from screen readers -
+         the bar's own aria-valuetext carries the reading, and the preview
+         is spoken through the tooltip instead. */
+      var preview = document.createElement('span');
+      preview.className = 'meter-preview';
+      preview.setAttribute('aria-hidden', 'true');
+      preview.hidden = true;
+      bar.appendChild(preview);
+
       var marker = document.createElement('span');
       marker.className = 'meter-marker';
       marker.setAttribute('aria-hidden', 'true');
@@ -584,9 +666,24 @@ var Render = (function (CFG, Score, MapArt) {
       row.appendChild(label);
       row.appendChild(value);
       row.appendChild(bar);
+
+      /* A dial that names a budget also says how much of it has gone. The
+         dial says how well the route is doing; this says what it has spent,
+         which is the figure a person actually argues about. */
+      var spend = null;
+      if (dial.budget && dial.spend) {
+        spend = document.createElement('span');
+        spend.className = 'meter-spend';
+        spend.setAttribute('aria-hidden', 'true');
+        row.appendChild(spend);
+      }
+
       container.appendChild(row);
 
-      meterParts[dial.id] = { bar: bar, marker: marker, value: value, dial: dial };
+      meterParts[dial.id] = {
+        bar: bar, marker: marker, preview: preview,
+        value: value, spend: spend, dial: dial
+      };
     });
   }
 
@@ -609,6 +706,24 @@ var Render = (function (CFG, Score, MapArt) {
       }));
       // Lets the marker be styled by band without recomputing the band in CSS.
       part.bar.dataset.band = band.replace(/\s+/g, '-');
+
+      /* The ghost. Hidden when there is nothing to preview, and when the
+         span would not move this dial at all - a marker sitting exactly
+         under the solid one says nothing and only adds clutter. */
+      if (part.spend) {
+        part.spend.textContent = fill(CFG.copy.meterSpend, {
+          spent: state.score.totals[part.dial.spend],
+          budget: CFG.budgets[part.dial.budget]
+        });
+      }
+
+      var ahead = state.preview ? state.preview.dials[id] : null;
+      var shows = ahead !== null && ahead !== value;
+      part.preview.hidden = !shows;
+      if (shows) {
+        part.preview.style.left = ahead + '%';
+        part.preview.dataset.way = ahead < value ? 'worse' : 'better';
+      }
     });
   }
 
@@ -618,9 +733,25 @@ var Render = (function (CFG, Score, MapArt) {
       var type = CFG.cellTypes[typeId];
       var item = document.createElement('li');
 
+      /* The swatch is dressed from here rather than from a per-type CSS
+         rule, which is what lets a new kind of ground be added in config.js
+         alone: the icon comes straight off the type, and the colour falls
+         back to farmland if nobody has defined a token for it yet.
+
+         The icon is set as background-image and NOT through a custom
+         property, which matters more than it looks. A url() carried in a
+         custom property is resolved against the stylesheet that used the
+         var(), not against the page - so 'img/x.svg' would be looked for in
+         css/img/, and quietly fail. Set here it is resolved against the
+         page, which is where CONFIG's paths are written from. */
       var swatch = document.createElement('span');
-      swatch.className = 'swatch t-' + typeId;
+      swatch.className = 'swatch';
       swatch.setAttribute('aria-hidden', 'true');
+      swatch.style.setProperty('--land',
+        'var(--brand-land-' + typeId + ', var(--brand-land-farmland))');
+      if (type.icon) {
+        swatch.style.backgroundImage = 'url("' + type.icon + '")';
+      }
 
       var label = document.createElement('span');
       label.className = 'swatch-label';
@@ -671,8 +802,87 @@ var Render = (function (CFG, Score, MapArt) {
     if (els.reset) { els.reset.disabled = !state.canReset; }
   }
 
-  function paintSeed(seed) {
+  function paintSeed(seed, daily) {
     if (els.seedValue) { els.seedValue.textContent = seed; }
+    if (els.seedLabel) {
+      els.seedLabel.textContent = daily
+        ? CFG.copy.seedDailyLabel
+        : CFG.copy.seedLabel;
+    }
+  }
+
+  /* ---------------------------------------------------------------------
+     The result, as something you can paste
+     ---------------------------------------------------------------------
+     Plain text and nothing else. No image to generate, no service to post
+     it to, and no network call - which is the only kind of sharing that
+     works on a page opened straight off a disk.
+
+     The bars are block characters rather than a picture for the same
+     reason: they survive being pasted anywhere, including places that strip
+     everything else.
+     ------------------------------------------------------------------- */
+
+  var SHARE_WIDTH = 12;
+
+  function shareBar(value) {
+    var filled = Math.round((value / 100) * SHARE_WIDTH);
+    var bar = '';
+    for (var i = 0; i < SHARE_WIDTH; i++) {
+      bar += i < filled ? '█' : '░';
+    }
+    return bar;
+  }
+
+  /* Shows the result as selectable text, for when the clipboard refuses.
+     Called with null to put it away again. */
+  function showShareFallback(text) {
+    if (!els.verdictShareBox) { return; }
+    els.verdictShareBox.hidden = !text;
+    if (!text) { return; }
+
+    els.verdictShareText.value = text;
+    els.verdictShareText.focus();
+    els.verdictShareText.select();
+  }
+
+  function shareText(state) {
+    var widest = 0;
+    CFG.dials.forEach(function (dial) {
+      if (dial.label.length > widest) { widest = dial.label.length; }
+    });
+
+    var lines = [
+      fill(state.daily ? CFG.copy.shareDaily : CFG.copy.shareTitle,
+           { seed: state.seed, date: state.daily })
+    ];
+
+    CFG.dials.forEach(function (dial) {
+      var value = state.score.dials[dial.id];
+      var label = dial.label;
+      while (label.length < widest) { label += ' '; }
+      lines.push(label + '  ' + shareBar(value) + '  ' + value);
+    });
+
+    if (state.par && state.par.allRound) {
+      lines.push(fill(CFG.copy.sharePar, { par: state.par.allRound.weakest }));
+    }
+
+    return lines.join('\n');
+  }
+
+  /* How hard this landscape is, in a word, from the same search that
+     decided it was worth showing at all. Hidden rather than blanked when
+     there is no reading, so the line does not leave a gap. */
+  function paintDifficulty(par) {
+    if (!els.difficulty) { return; }
+
+    var weakest = par && par.allRound ? par.allRound.weakest : null;
+    els.difficulty.hidden = weakest === null;
+    if (weakest === null) { return; }
+
+    els.difficulty.textContent = bandIn(CFG.difficulty, weakest, 'word');
+    els.difficulty.title = bandIn(CFG.difficulty, weakest, 'hint');
   }
 
   function openDialog(dialog) {
@@ -683,6 +893,15 @@ var Render = (function (CFG, Score, MapArt) {
       // <dialog> is well supported, but a plain attribute keeps the content
       // reachable if showModal is ever missing.
       dialog.setAttribute('open', '');
+    }
+  }
+
+  function closeDialog(dialog) {
+    if (!dialog) { return; }
+    if (typeof dialog.close === 'function' && dialog.open) {
+      dialog.close();
+    } else {
+      dialog.removeAttribute('open');
     }
   }
 
@@ -699,6 +918,34 @@ var Render = (function (CFG, Score, MapArt) {
   // Shown once, when the connection is energised.
   var verdictShown = false;
 
+  // The line the first band in 'list' whose 'min' the value reaches carries.
+  function bandIn(list, value, field) {
+    for (var i = 0; i < list.length; i++) {
+      if (value >= list[i].min) { return list[i][field]; }
+    }
+    return list[list.length - 1][field];
+  }
+
+  /* How the finished route compares with the best one the balance search
+     found on this landscape. Deliberately "found" rather than "possible":
+     that search never considers a route that doubles back west, so it is a
+     strong benchmark and not a proof of the optimum. */
+  function parReading(state) {
+    if (!state.par || !state.par.allRound) { return null; }
+
+    var par = state.par.allRound.weakest;
+    if (!par) { return null; }
+
+    var yours = Score.lowestDial(state.score.dials).value;
+    var share = (yours / par) * 100;
+
+    return {
+      line: fill(yours >= par ? CFG.copy.parLineMatched : CFG.copy.parLine,
+                 { yours: yours, par: par }),
+      encouragement: bandIn(CFG.encouragement, share, 'text')
+    };
+  }
+
   function paintVerdict(state) {
     if (!els.verdictDialog) { return; }
     if (state.phase !== 'complete') {
@@ -711,6 +958,19 @@ var Render = (function (CFG, Score, MapArt) {
     var verdict = CFG.verdicts[Score.verdictKeyFor(state.score.dials)];
     if (els.verdictTitle) { els.verdictTitle.textContent = verdict.title; }
     if (els.verdictBody) { els.verdictBody.textContent = verdict.body; }
+
+    if (els.verdictPar) {
+      var reading = parReading(state);
+      els.verdictPar.hidden = !reading;
+      if (reading) {
+        els.verdictPar.textContent = '';
+        var said = document.createElement('strong');
+        said.textContent = reading.encouragement;
+        els.verdictPar.appendChild(said);
+        els.verdictPar.appendChild(document.createTextNode(' ' + reading.line));
+      }
+    }
+
     openDialog(els.verdictDialog);
   }
 
@@ -744,9 +1004,22 @@ var Render = (function (CFG, Score, MapArt) {
     setText(els.instructionsLead, copy.strapline);
     setText(els.instructionsClose, copy.closeButton);
     setText(els.verdictClose, copy.closeButton);
+    setText(els.verdictAgain, copy.verdictAgain);
+    setText(els.verdictBest, copy.verdictBest);
+    setText(els.verdictShare, copy.verdictShare);
+    setText(els.verdictShareHint, copy.verdictShareHint);
+    setText(els.daily, copy.dailyButton);
+    setText(els.seedGo, copy.seedGo);
+    setText(els.committedLabel, copy.committedLabel);
+    setText(els.committedHint, copy.committedHint);
+    if (els.seedInput) {
+      els.seedInput.setAttribute('aria-label', copy.seedInputLabel);
+      els.seedInput.placeholder = copy.seedInputPlaceholder;
+    }
   }
 
   function paint(state) {
+    setPreview(state);
     paintBoard(state);
     paintChevrons(state);
     paintRoute(state);
@@ -767,8 +1040,14 @@ var Render = (function (CFG, Score, MapArt) {
     buildLegend: buildLegend,
     buildInstructions: buildInstructions,
     openDialog: openDialog,
+    closeDialog: closeDialog,
     setCursor: setCursor,
+    paintGhostRoute: paintGhostRoute,
+    clearGhostRoute: clearGhostRoute,
     paintSeed: paintSeed,
+    paintDifficulty: paintDifficulty,
+    shareText: shareText,
+    showShareFallback: showShareFallback,
     hideTip: hideTip,
     paint: paint,
     elements: els

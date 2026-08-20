@@ -108,11 +108,19 @@ var Balance = (function (CFG, Score) {
      answers none of those - it is being rejected either way - and carrying it
      means carrying everything that grows out of it too.
 
-     Both bounds only ever tighten as a route gets longer: cost only rises and
-     environment only falls, because no cell refunds either. So a route past
-     one of them can never come back, and dropping it loses nothing that would
-     have been reported. Community is NOT bounded here, and must not be:
-     connection customers and benefit land pay it back.
+     Environment only ever falls, because no cell repairs it, so a route past
+     that bound can never come back and dropping it loses nothing.
+
+     Cost is nearly the same story but not quite. It rises on every kind of
+     ground but one: connection funding refunds it. A route can therefore go
+     past a fixed cost bound and come back under it, so the bound is not a
+     fixed figure - it is the budget PLUS every refund still on the map. That
+     is generous, and deliberately so: a bound that is too tight throws away
+     routes that would have been reported, which is a wrong answer, while one
+     that is too loose only costs time. See costCeiling below.
+
+     Community is NOT bounded here, and must not be: connection customers and
+     benefit land pay it back, and always could.
 
      Where to put it is a trade, and the two callers want different answers.
      The game only needs the accept-or-reject decision, and wants it while a
@@ -261,7 +269,7 @@ var Balance = (function (CFG, Score) {
       CFG.technologies.forEach(function (tech) {
         if (tech.bansTerrain.indexOf(typeId) !== -1) { return; }
         raw.push(pack(
-          Math.round(type.cost * tech.costMult * 10),
+          Math.round(Score.costOf(type, tech) * 10),
           Math.round(type.envImpact * tech.impactMult * 10),
           Math.round(type.commImpact * tech.impactMult * 10)
         ));
@@ -359,7 +367,7 @@ var Balance = (function (CFG, Score) {
     if (type.passable) {
       CFG.technologies.forEach(function (tech) {
         if (tech.bansTerrain.indexOf(typeId) !== -1) { return; }
-        var cost = Math.round(type.cost * tech.costMult * 10);
+        var cost = Math.round(Score.costOf(type, tech) * 10);
         if (lowest === null || cost < lowest) { lowest = cost; }
       });
     }
@@ -433,7 +441,7 @@ var Balance = (function (CFG, Score) {
      cheapest one, and carrying it on would double the search for nothing.
      Whether a route EXISTS is answered separately, above, so this cannot
      make an expensive map look like an impossible one. */
-  function advance(bundle, typeId, limits) {
+  function advance(bundle, typeId, limits, note) {
     var options = optionsFor(typeId);
     if (!options) { return null; }          // open water: the run stops here
 
@@ -449,6 +457,10 @@ var Balance = (function (CFG, Score) {
         // Wrecked the environment past the point of being worth reporting.
         if (moved % SPAN >= limits.env) { continue; }
         shifted.push(moved);
+        /* Only when somebody is tracing a route back. Absent on the path the
+           generator takes, which runs this loop tens of thousands of times
+           per map and must not pay for a feature it never uses. */
+        if (note) { note(moved, source[i], option); }
       }
       if (shifted.length) { branches.push(shifted); }
     }
@@ -460,18 +472,37 @@ var Balance = (function (CFG, Score) {
     };
   }
 
-  function explore(rows, floor) {
+  /* Every tenth of cost the map could still give back, added to the cost
+     bound so that it stays admissible.
+
+     A route that has overspent may yet be redeemed by funding it has not
+     reached, so the bound has to allow for all of it. Counting what is on
+     the whole board rather than what is still ahead is looser than it needs
+     to be and much simpler to be sure of; on a map with no funding on it at
+     all this adds nothing and the bound is exactly what it always was. */
+  function refundOn(grid) {
+    var total = 0;
+    for (var row = 0; row < grid.length; row++) {
+      for (var col = 0; col < grid[row].length; col++) {
+        var cheapest = cheapestCellCost(grid[row][col]);
+        if (cheapest !== null && cheapest < 0) { total -= cheapest; }
+      }
+    }
+    return total;
+  }
+
+  function explore(rows, floor, tracer) {
     var reportFloor = typeof floor === 'number' ? floor : DEFAULT_FLOOR;
     var grid = gridFrom(rows);
     var colCount = CFG.grid.cols;
     var rowCount = CFG.grid.rows;
 
-    /* The bounds explained at REPORT_FLOOR, turned into the two comparisons
+    /* The bounds explained at DEFAULT_FLOOR, turned into the two comparisons
        the inner loop actually makes. Cost sits in the top field of the packed
        number, so testing it is one comparison against one threshold. */
     var share = (100 - reportFloor) / 100;
     var limits = {
-      cost: (Math.round(CFG.budgets.COST_BUDGET * share * 10) + 1) * SPAN,
+      cost: (Math.round(CFG.budgets.COST_BUDGET * share * 10) + refundOn(grid) + 1) * SPAN,
       env: (Math.round(ZERO + CFG.budgets.ENV_FLOOR * share * 10) + 1) * FIELD
     };
 
@@ -488,18 +519,28 @@ var Balance = (function (CFG, Score) {
           var list = entering[rIn][sub];
           if (!list.length) { continue; }
 
-          // The cell the line enters on, then the vertical run out of it.
-          var atEntry = advance({ sub: sub, list: list }, grid[rIn][col], limits);
+          /* The cell the line enters on, then the vertical run out of it.
+
+             The extra argument is the trace hook, and is undefined unless
+             somebody is reconstructing a route. It says which cell the line
+             is stepping FROM and which it is stepping ON TO, which is the
+             one thing the packed numbers themselves cannot remember. */
+          var atEntry = advance({ sub: sub, list: list }, grid[rIn][col], limits,
+            tracer && tracer.step(col - 1, rIn, sub, col, rIn, grid[rIn][col]));
           if (!atEntry) { continue; }
           merge(leaving[rIn][atEntry.sub], atEntry.list);
 
           for (var d = 0; d < 2; d++) {
             var step = d === 0 ? -1 : 1;
             var run = atEntry;
+            var fromRow = rIn;
             for (var r = rIn + step; r >= 0 && r < rowCount; r += step) {
-              run = advance(run, grid[r][col], limits);
+              var was = run;
+              run = advance(was, grid[r][col], limits,
+                tracer && tracer.step(col, fromRow, was.sub, col, r, grid[r][col]));
               if (!run) { break; }
               merge(leaving[r][run.sub], run.list);
+              fromRow = r;
             }
           }
         }
@@ -525,14 +566,21 @@ var Balance = (function (CFG, Score) {
      Reading the frontier
      ------------------------------------------------------------------- */
 
+  /* The tie-break here has to be the same one the player's verdict uses, or
+     this search can accept a map for a reason the player is never shown.
+     Score.lowestDial is that single answer - see the note above it. */
   function readingFor(state) {
     var totals = unpack(state);
     var dials = Score.dialsFor(totals);
-    var weakest = Math.min(dials.cost, dials.env, dials.comm);
-    var lowest = 'cost';
-    if (dials.env === weakest) { lowest = 'env'; }
-    if (dials.comm === weakest) { lowest = 'comm'; }
-    return { totals: totals, dials: dials, weakest: weakest, lowest: lowest };
+    var lowest = Score.lowestDial(dials);
+    return {
+      // Kept so a route reaching exactly these totals can be traced back.
+      packed: state,
+      totals: totals,
+      dials: dials,
+      weakest: lowest.value,
+      lowest: lowest.key
+    };
   }
 
   function summarise(frontier, routeExists, floorCost, reportFloor) {
@@ -592,6 +640,121 @@ var Balance = (function (CFG, Score) {
   }
 
   /* ---------------------------------------------------------------------
+     Tracing one route back
+     ---------------------------------------------------------------------
+     The search knows what the best route on a landscape SCORES long before
+     the player ever sees the map. It has never known which route that is:
+     the packed totals are a running sum and a sum does not remember what
+     was added to it.
+
+     So the same search runs a second time with a note taken of where every
+     state came from, and the answer is walked backwards from the finishing
+     total. That doubling is deliberate. The first pass runs up to two dozen
+     times per landscape while the generator is looking for one worth
+     playing, and must stay fast; this one runs once, after the game is
+     already over, when nobody is waiting on it.
+
+     Two things make the walk exact rather than a guess. The search is
+     west-free, so a route enters each column once and the chain cannot
+     loop. And each step records how much it ADDED, which is enough to say
+     which technology was used - the totals alone could not.
+     ------------------------------------------------------------------- */
+
+  function nodeKey(col, row, sub, packed) {
+    return col + ':' + row + ':' + sub + ':' + packed;
+  }
+
+  // What one cell on one technology adds, in the search's packed units.
+  function deltaOf(typeId, tech) {
+    var type = CFG.cellTypes[typeId];
+    return delta(
+      Math.round(Score.costOf(type, tech) * 10),
+      Math.round(type.envImpact * tech.impactMult * 10),
+      Math.round(type.commImpact * tech.impactMult * 10)
+    );
+  }
+
+  /* Which technology was used, read back off the amount the step added.
+     Two technologies scoring identically on one kind of ground would be
+     indistinguishable here, and either answer would be right. */
+  function techFromDelta(typeId, added) {
+    for (var i = 0; i < CFG.technologies.length; i++) {
+      var tech = CFG.technologies[i];
+      if (tech.bansTerrain.indexOf(typeId) !== -1) { continue; }
+      if (deltaOf(typeId, tech) === added) { return tech.id; }
+    }
+    return null;
+  }
+
+  /* The route that reaches `packedTarget`, as an ordered list of cells from
+     the generation site to the demand centre. Returns null if it cannot be
+     traced, which the caller should treat as "do not show one" rather than
+     as an error - a route nobody can reconstruct is not one worth drawing.
+
+     `floor` must match the one the target was found at, or the states it
+     passed through will have been pruned on the way. */
+  function traceBest(rows, packedTarget, floor) {
+    var parents = Object.create(null);
+
+    var tracer = {
+      step: function (fromCol, fromRow, fromSub, toCol, toRow, typeId) {
+        var toSub = fromSub || (typeId === 'substation' ? 1 : 0);
+        return function (moved, source, added) {
+          var key = nodeKey(toCol, toRow, toSub, moved);
+          /* First one wins. Several routes can arrive at identical totals,
+             and by definition they are equally good - there is nothing to
+             choose between them, so there is no reason to look further. */
+          if (parents[key] === undefined) {
+            parents[key] = {
+              col: fromCol, row: fromRow, sub: fromSub,
+              packed: source, added: added
+            };
+          }
+        };
+      }
+    };
+
+    explore(rows, typeof floor === 'number' ? floor : DEFAULT_FLOOR, tracer);
+
+    var grid = gridFrom(rows);
+    var subs = CFG.rules.requireSubstation ? [1] : [1, 0];
+
+    for (var i = 0; i < subs.length; i++) {
+      var chain = walkBack(parents, grid, CFG.end.col, CFG.end.row, subs[i], packedTarget);
+      if (chain) { return chain; }
+    }
+    return null;
+  }
+
+  function walkBack(parents, grid, col, row, sub, packed) {
+    var chain = [];
+    var at = { col: col, row: row, sub: sub, packed: packed };
+
+    // One entry per cell of the board is the most any west-free route holds.
+    var guard = CFG.grid.cols * CFG.grid.rows + 1;
+
+    while (at.col >= 0) {
+      if (chain.length > guard) { return null; }
+
+      var found = parents[nodeKey(at.col, at.row, at.sub, at.packed)];
+      if (!found) { return null; }
+
+      var typeId = grid[at.row][at.col];
+      chain.push({
+        col: at.col,
+        row: at.row,
+        typeId: typeId,
+        techId: techFromDelta(typeId, found.added)
+      });
+
+      at = { col: found.col, row: found.row, sub: found.sub, packed: found.packed };
+    }
+
+    chain.reverse();
+    return chain;
+  }
+
+  /* ---------------------------------------------------------------------
      The accept test
      ---------------------------------------------------------------------
      Three things have to be true, and a map failing any of them is rerolled
@@ -645,6 +808,7 @@ var Balance = (function (CFG, Score) {
   return {
     explore: explore,
     verdict: verdict,
+    traceBest: traceBest,
     gridFrom: gridFrom
   };
 

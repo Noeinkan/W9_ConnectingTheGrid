@@ -221,12 +221,25 @@ var Score = (function (CFG) {
      Scoring
      ------------------------------------------------------------------- */
 
+  /* What one kind of ground costs on one technology.
+
+     Ordinarily the technology multiplier applies: a harder technology makes
+     every metre of ground more expensive to build across. Ground marked
+     'fixedCost' is the exception, and connection funding is why it exists -
+     a grant is a fixed sum agreed in advance, and it does not grow because
+     the scheme chose to bury the line. Without this the multiplier would
+     work backwards on it and undergrounding through a grant would pay six
+     times over, which is not a trade-off, it is a bug with a story. */
+  function costOf(type, tech) {
+    return type.fixedCost ? type.cost : type.cost * tech.costMult;
+  }
+
   // One segment. Returns its cost and its environmental and community effect.
   function scoreSegment(typeId, techId) {
     var type = cellType(typeId);
     var tech = technology(techId);
     return {
-      cost: type.cost * tech.costMult,
+      cost: costOf(type, tech),
       env: type.envImpact * tech.impactMult,
       comm: type.commImpact * tech.impactMult
     };
@@ -280,14 +293,41 @@ var Score = (function (CFG) {
     return CFG.bands[CFG.bands.length - 1].word;
   }
 
+  /* Which dial is the weakest, and how weak.
+
+     The tie-break matters more than it looks. Two places ask this question:
+     the player's verdict, and the generator's acceptance test, which throws
+     away any map whose cheapest route is not punished on the environment.
+     They used to answer it differently - one broke a tie towards cost, the
+     other towards community - so a map whose cheapest route tied on two
+     dials could be accepted for a reason the player was never shown. There
+     is one answer now, and it lives here.
+
+     The order is cost, then environment, then community, and the FIRST of
+     those to hold the lowest value wins. That is the order the dials are
+     read in everywhere else in the game, so a tie resolves the way the
+     player's eye already travels. */
+  var DIAL_ORDER = ['cost', 'env', 'comm'];
+
+  function lowestDial(dials) {
+    var key = DIAL_ORDER[0];
+    var value = dials[key];
+
+    for (var i = 1; i < DIAL_ORDER.length; i++) {
+      if (dials[DIAL_ORDER[i]] < value) {
+        key = DIAL_ORDER[i];
+        value = dials[key];
+      }
+    }
+
+    return { key: key, value: value };
+  }
+
   // Which verdict applies: the lowest dial decides, unless all are strong.
   function verdictKeyFor(dials) {
-    var lowestKey = 'cost';
-    var lowestValue = dials.cost;
-    if (dials.env < lowestValue) { lowestKey = 'env'; lowestValue = dials.env; }
-    if (dials.comm < lowestValue) { lowestKey = 'comm'; lowestValue = dials.comm; }
-    if (lowestValue >= CFG.balancedThreshold) { return 'balanced'; }
-    return lowestKey;
+    var lowest = lowestDial(dials);
+    if (lowest.value >= CFG.balancedThreshold) { return 'balanced'; }
+    return lowest.key;
   }
 
   /* ---------------------------------------------------------------------
@@ -416,10 +456,12 @@ var Score = (function (CFG) {
     canUseTech: canUseTech,
     piece: piece,
     pieceOpens: pieceOpens,
+    costOf: costOf,
     scoreSegment: scoreSegment,
     scoreRoute: scoreRoute,
     dialsFor: dialsFor,
     bandFor: bandFor,
+    lowestDial: lowestDial,
     verdictKeyFor: verdictKeyFor,
     validateMap: validateMap,
     selfTest: selfTest

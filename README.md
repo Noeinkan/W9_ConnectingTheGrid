@@ -87,9 +87,33 @@ just harm: undergrounding through a community benefit site earns less credit.
 pass through a substation to be energised. Underground cable cannot be taken
 through a river.
 
+**Connection funding.** One kind of ground gives cost back rather than taking
+it: a funded connection point, worth -4. It is the only ground marked
+`fixedCost`, which means the technology multiplier does not apply to it — a
+grant is a sum agreed in advance and does not grow because the scheme chose to
+bury the line. The generator puts funding on the far side of the map from the
+way round the designated land, so reaching it is always a detour and always a
+question.
+
+**Committed mode.** Off by default. Turned on, spans cannot be taken down once
+they are up, the way they cannot on site — dragging back over the line stops
+rubbing it out, and the only way to change a route is to start again.
+
 **Verdicts.** When the line reaches the demand centre, the lowest dial picks
 the verdict. If every dial finishes at or above `balancedThreshold` (70), the
-player gets the balanced verdict instead.
+player gets the balanced verdict instead. Two dials tied at the bottom are
+broken apart in one place only, `Score.lowestDial` — cost, then environment,
+then community, first one wins. The balance search uses the same function, and
+it has to: it throws maps away on which dial punishes the cheapest route, so a
+second opinion there would accept maps for reasons the player is never shown.
+
+**Par.** The verdict also says what the best route the checker found on that
+landscape scores, and **Show the best route found** draws it over the map.
+Note the wording. The search is west-free and prunes routes that are already
+hopeless, so it is a strong benchmark and not a proof of the optimum — a
+westward detour to collect one more benefit cell is outside what it considers.
+Nothing is drawn unless the traced route scores exactly what the search said,
+so a corridor that does not add up is never shown at all.
 
 ## Playing
 
@@ -104,11 +128,41 @@ player gets the balanced verdict instead.
   least one direction that still just moves the cursor. `1`, `2` and `3` pick a
   technology.
 - **Either way:** hovering or focusing any square names the land and says what
-  crossing it costs.
+  crossing it costs. On the highlighted square it also says where the three
+  dials land if you build it — the same reading the ghost markers show inside
+  the meter bars. That preview does not change with direction, because the
+  span being paid for is the highlighted square's whichever way the line
+  leaves; it changes with **technology**, which is the choice it exists to
+  inform. Which way to go is answered on the arrows, which name the ground
+  each one leads into.
 - Every cell, meter and move is described for screen readers, and the status
   line is a polite live region so announcements are not cut off mid-sentence.
   The arrows are hidden from screen readers on purpose — the keyboard path
   above does the same job, and does it better.
+
+## Coming back to a landscape
+
+Every landscape is a short seed, and the seed is now in the address bar.
+
+| | |
+|---|---|
+| `index.html?seed=9MA7JX` | that exact landscape, every time |
+| `index.html?daily` | the same landscape as everybody else today |
+
+**Today's landscape** is worked out from the UTC date — not the local one,
+which would hand two people in different time zones different landscapes and
+call them both today's. Rerolling a rejected daily is deterministic too, so
+two players do not merely start from the same seed, they walk the same path to
+the same accepted map. There is no server and nothing is stored.
+
+Type a name into the box under the seed line to play any landscape by name,
+and **Copy result** puts the finished dials on the clipboard as plain text.
+If the browser refuses the clipboard — which it does on `file://`, because
+that is not a secure context — the text appears on the page, selected, to be
+copied by hand.
+
+Nothing is written to storage. The address bar is the only thing this game
+remembers.
 
 ## Tuning the game
 
@@ -125,7 +179,8 @@ checked before it is shown. **New landscape** rolls another one.
 F farmland    W woodland           C connection customer
 R road        V river              B community benefit
 K rocky       S designated land    X substation
-H hills       T houses/industry    ~ open water (blocked)
+H hills       T houses/industry    G connection funding
+                                   ~ open water (blocked)
 ```
 
 ### What the generator lays down
@@ -172,6 +227,12 @@ away and another rolled unless all three of these hold:
 | **balanced** | some route scores at or above 70 on *all three* dials |
 | **non-trivial** | the *cheapest* route does not, and fails on environment |
 
+Across 500 seeds the generator accepts about three maps in four (74.6% at the
+settings in `config.js`), and the best weakest dial on an accepted map runs
+from 70 to 77.7, median 73.1. Those are the figures the difficulty badge is
+banded against, so re-measure with `node js/balance.js --seeds 500` before
+moving them.
+
 The second matters most. A map where the balanced verdict is unreachable asks
 the player to do something impossible, and it is not obvious from looking at
 it — this game shipped with exactly that bug, on a hand-drawn map, at
@@ -200,6 +261,15 @@ the test says which and shows the arithmetic.
 There are exactly six pieces because there are exactly six ways to choose two
 of four sides. Adding a seventh is not possible; reordering and relabelling
 them is fine.
+
+Adding a kind of **ground**, on the other hand, is now genuinely a config job:
+an entry in `cellTypes` with an `icon`, a letter in `legend`, and a pass in the
+generator that puts it somewhere. The legend and the drawn map read the icon
+and the colour token off the type, and a type with no colour token of its own
+falls back to farmland rather than disappearing. One thing to know if you give
+it a negative cost: the balance search's cost bound has to allow for every
+refund on the map, which `refundOn` does, and its pruning comment explains why
+it must.
 
 ### How the map is drawn
 

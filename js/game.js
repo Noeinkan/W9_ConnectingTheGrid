@@ -84,6 +84,9 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
     fits: {},               // piece id -> would it fit on the target right now
     exits: [],              // the ways out of the target - see exitsFrom()
     seed: null,             // which landscape is being played
+    daily: null,            // set when today's landscape is the one in play
+    par: null,              // what the balance search found on this landscape
+    preview: null,          // where the dials land if the target is built
     canUndo: false,
     canReset: false,
     score: null
@@ -290,6 +293,46 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
     return place(state.target.col, state.target.row, exit.pieceId);
   }
 
+  /* What building the highlighted square would do to the three dials,
+     without building it.
+
+     The game was asking the player to trade cost against environment
+     against community and only showing the price once the span was already
+     up. This is the fix, and it is aimed at the decision the player
+     actually has.
+
+     Note what it does NOT depend on: direction. The piece is laid on the
+     highlighted square, so the ground being paid for is that square's
+     whichever way the line then leaves. What DOES change the reading is the
+     technology, which is exactly the choice worth informing - lattice,
+     pylon or cable across this square, and here is what each does to the
+     dials. Which way to leave is a different question, answered on the
+     arrows and in the tooltip by naming the ground each way leads into.
+
+     The arithmetic is Score's. Nothing here is a second copy of a rule that
+     lives somewhere else. */
+  function previewSpan() {
+    if (!state.target || !state.score) { return null; }
+    if (!anyPieceFits()) { return null; }
+
+    var typeId = Score.typeIdAt(state.target.col, state.target.row);
+    if (!typeId) { return null; }
+
+    var span = Score.scoreSegment(typeId, state.currentTech);
+    var now = state.score.totals;
+
+    return {
+      typeId: typeId,
+      techId: state.currentTech,
+      span: span,
+      dials: Score.dialsFor({
+        cost: now.cost + span.cost,
+        env: now.env + span.env,
+        comm: now.comm + span.comm
+      })
+    };
+  }
+
   function setTech(techId) {
     state.currentTech = Score.technology(techId).id;
     settlePhase();
@@ -308,6 +351,7 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
   }
 
   function reset() {
+    Render.clearGhostRoute();
     state.route = [];
     state.currentTech = CFG.defaultTechnology;
     state.phase = 'ready';
@@ -324,11 +368,27 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
      there is no second copy to fall out of step.
      ------------------------------------------------------------------- */
 
-  function newMap(seed) {
-    var built = MapGen.generate(seed, Balance.verdict);
-
+  /* Puts a generated landscape into play. Everything downstream reads the
+     map through Score, so there is one call and no second copy to fall out
+     of step. Both ways of asking for a landscape end up here. */
+  function install(built) {
     Score.setMap(built.rows);
     state.seed = built.seed;
+    state.daily = built.daily || null;
+
+    /* The balance search has already worked out, for this landscape, the
+       best route it can find and what that route scores. It was thrown away
+       here until now, which meant the game knew how good a route was
+       available and never said so. Keep it: the difficulty badge, the
+       comparison under the verdict and the best route drawn on the map are
+       all read straight off it. */
+    state.par = built.verdict && built.verdict.found
+      ? {
+          allRound: built.verdict.found.allRound,
+          best: built.verdict.found.best,
+          cheapest: built.verdict.found.cheapest
+        }
+      : null;
 
     var problems = Score.validateMap();
     if (problems.length) {
@@ -338,10 +398,136 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
     }
 
     Render.buildMap(built.rows, built.features, built.seed);
-    Render.paintSeed(built.seed);
+    Render.paintSeed(built.seed, state.daily);
+    Render.paintDifficulty(state.par);
+    rememberInAddressBar();
     reset();
     Render.setCursor(cursor.col, cursor.row, false);
     return built;
+  }
+
+  function newMap(seed) {
+    return install(MapGen.generate(seed, Balance.verdict));
+  }
+
+  /* Today's landscape: the same one for everybody, worked out from the UTC
+     date rather than fetched from anywhere. */
+  function newDaily(dateText) {
+    return install(MapGen.daily(dateText, Balance.verdict));
+  }
+
+  /* ---------------------------------------------------------------------
+     The address bar
+     ---------------------------------------------------------------------
+     The only thing this game remembers, and it lives in the URL rather than
+     in storage: which landscape is being played. That makes a landscape
+     something you can send to somebody, and costs nothing on a page that is
+     just as likely to be opened off a disk as off a server.
+
+     Both directions are guarded. Some browsers refuse replaceState on a
+     file:// URL, and a game that will not start because it could not tidy
+     the address bar would be a poor trade.
+     ------------------------------------------------------------------- */
+
+  function readAddressBar() {
+    try {
+      var query = String(location.search || '');
+      if (/[?&]daily(=|&|$)/.test(query)) { return { daily: true }; }
+      var found = /[?&]seed=([A-Za-z0-9]+)/.exec(query);
+      return found ? { seed: found[1].toUpperCase() } : null;
+    } catch (ignored) {
+      return null;
+    }
+  }
+
+  function rememberInAddressBar() {
+    try {
+      if (!history.replaceState) { return; }
+      history.replaceState(null, '',
+        state.daily ? '?daily' : '?seed=' + encodeURIComponent(state.seed));
+    } catch (ignored) {
+      /* file:// in some browsers. The game plays on regardless; only the
+         shareable link is lost, and the seed is still on screen. */
+    }
+  }
+
+  /* ---------------------------------------------------------------------
+     The best route found
+     ---------------------------------------------------------------------
+     Offered once the game is over, and only then. Shown before the player
+     has finished it would be an answer key; shown afterwards it is the one
+     thing the game could always have said and never did - here is what this
+     landscape had in it.
+
+     Traced rather than stored, because the search that found the SCORE runs
+     while the map is being generated and the route it took is not worth
+     carrying around on the chance that somebody asks. Nothing is drawn
+     unless the traced route scores exactly what the search said the best
+     route scores: a corridor that does not add up would be worse than no
+     corridor at all.
+     ------------------------------------------------------------------- */
+
+  function showBestRoute() {
+    if (!state.par || !state.par.allRound) { return null; }
+
+    var chain = Balance.traceBest(Score.mapRows(), state.par.allRound.packed);
+    if (!chain || !chain.length) { return null; }
+
+    // The traced cells carry their ground and technology; the piece joining
+    // each to the next is worked out the same way a laid span's is.
+    var route = chain.map(function (cell, index) {
+      var before = chain[index - 1];
+      var after = chain[index + 1];
+      var into = before ? directionBetween(cell, before) : CFG.start.entry;
+      var outOf = after ? directionBetween(cell, after) : CFG.end.exit;
+      var piece = pieceJoining(into, outOf);
+
+      return {
+        col: cell.col,
+        row: cell.row,
+        pieceId: piece ? piece.id : null,
+        techId: cell.techId,
+        typeId: cell.typeId
+      };
+    });
+
+    // Does it add up? If not, say nothing rather than say something wrong.
+    var scored = Score.scoreRoute(route);
+    var want = state.par.allRound.dials;
+    if (scored.dials.cost !== want.cost ||
+        scored.dials.env !== want.env ||
+        scored.dials.comm !== want.comm) {
+      return null;
+    }
+
+    Render.paintGhostRoute(route);
+    return route;
+  }
+
+  /* The finished result as plain text, on the clipboard if the browser will
+     allow it and on the page to be copied by hand if it will not.
+
+     The fallback is not a nicety. navigator.clipboard needs a secure
+     context, and file:// is not one - which is a supported way to run this
+     game, so the path where copying is refused is the ordinary path, not
+     the exceptional one. */
+  function shareResult() {
+    if (state.phase !== 'complete' || !state.score) { return; }
+
+    var text = Render.shareText(state);
+    Render.showShareFallback(null);
+
+    var clipboard = typeof navigator !== 'undefined' && navigator.clipboard;
+    if (!clipboard || !clipboard.writeText) {
+      Render.showShareFallback(text);
+      return;
+    }
+
+    clipboard.writeText(text).then(function () {
+      say(CFG.copy.verdictShareCopied, 'success');
+    }, function () {
+      Render.showShareFallback(text);
+    });
   }
 
   /* ---------------------------------------------------------------------
@@ -398,6 +584,9 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
     recomputeTarget();
     state.canUndo = CFG.rules.allowUndo && state.route.length > 0;
     state.canReset = state.route.length > 0;
+    // Worked out here rather than asked for by render.js, which decides no
+    // rules and would have to know what a legal span is to ask.
+    state.preview = previewSpan();
     Render.paint(state);
     Render.setCursor(cursor.col, cursor.row, false);
   }
@@ -449,6 +638,13 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
   function onDragOver(col, row) {
     var exit = exitTowards(col, row);
     if (exit && exit.ok) { stepTo(col, row); return; }
+
+    /* Dragging back over the line rubs it out - unless spans cannot come
+       down, in which case say nothing. undo() would refuse, politely, on
+       every pointer move of a backward drag, and fire the live region
+       dozens of times to do it. A drag that cannot rub out should simply
+       not rub out. */
+    if (!CFG.rules.allowUndo) { return; }
 
     var backOne = state.route[state.route.length - 2];
     if (backOne && backOne.col === col && backOne.row === row) { undo(); }
@@ -539,6 +735,14 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
       newMap: 'newMapButton',
       seedLabel: 'seedLabel',
       seedValue: 'seedValue',
+      difficulty: 'difficulty',
+      committedToggle: 'committedToggle',
+      committedLabel: 'committedLabel',
+      committedHint: 'committedHint',
+      seedForm: 'seedForm',
+      seedInput: 'seedInput',
+      seedGo: 'seedGo',
+      daily: 'dailyButton',
       instructionsTab: 'instructionsTab',
       instructionsDialog: 'instructionsDialog',
       instructionsHeading: 'instructionsHeading',
@@ -546,6 +750,13 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
       instructionsLead: 'instructionsLead',
       instructionsClose: 'instructionsClose',
       verdictClose: 'verdictClose',
+      verdictAgain: 'verdictAgain',
+      verdictBest: 'verdictBest',
+      verdictShare: 'verdictShare',
+      verdictShareBox: 'verdictShareBox',
+      verdictShareHint: 'verdictShareHint',
+      verdictShareText: 'verdictShareText',
+      verdictPar: 'verdictPar',
       verdictDialog: 'verdictDialog',
       verdictHeading: 'verdictHeading',
       verdictTitle: 'verdictTitle',
@@ -570,17 +781,74 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
     Render.elements.undo.addEventListener('click', function () { undo(); });
     Render.elements.reset.addEventListener('click', function () { reset(); });
     Render.elements.newMap.addEventListener('click', function () { newMap(); });
+
+    /* Committed mode. The rule was always there and always respected - it
+       simply had no way of being switched on. */
+    if (Render.elements.committedToggle) {
+      Render.elements.committedToggle.checked = !CFG.rules.allowUndo;
+      Render.elements.committedToggle.addEventListener('change', function (event) {
+        CFG.rules.allowUndo = !event.target.checked;
+        refresh();
+      });
+    }
+
+    if (Render.elements.daily) {
+      Render.elements.daily.addEventListener('click', function () { newDaily(); });
+    }
+
+    /* Typing a landscape's name plays that landscape. The generator has
+       always honoured an explicit seed exactly; until now nothing ever
+       handed it one. */
+    if (Render.elements.seedForm) {
+      Render.elements.seedForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        var asked = String(Render.elements.seedInput.value || '').trim().toUpperCase();
+        if (!asked) { return say(CFG.copy.errSeedEmpty, 'error'); }
+        Render.elements.seedInput.value = '';
+        newMap(asked);
+      });
+    }
+
+    if (Render.elements.verdictShare) {
+      Render.elements.verdictShare.addEventListener('click', function () {
+        shareResult();
+      });
+    }
     Render.elements.instructionsTab.addEventListener('click', function () {
       Render.openDialog(Render.elements.instructionsDialog);
     });
 
-    newMap();
+    /* The verdict used to be a dead end with nothing on it but Close. This
+       is the button that closes the loop. */
+    if (Render.elements.verdictAgain) {
+      Render.elements.verdictAgain.addEventListener('click', function () {
+        Render.closeDialog(Render.elements.verdictDialog);
+        newMap();
+      });
+    }
+
+    if (Render.elements.verdictBest) {
+      Render.elements.verdictBest.addEventListener('click', function () {
+        Render.closeDialog(Render.elements.verdictDialog);
+        var shown = showBestRoute();
+        say(shown ? CFG.copy.verdictBestShown : CFG.copy.verdictBestMissing,
+            shown ? 'info' : 'warning');
+      });
+    }
+
+    /* What to open with. A named landscape or today's, if the address bar
+       asks for one; otherwise a fresh roll, as before. */
+    var asked = readAddressBar();
+    if (asked && asked.daily) { newDaily(); }
+    else if (asked && asked.seed) { newMap(asked.seed); }
+    else { newMap(); }
   }
 
   return {
     init: init,
     newMap: newMap,
     stepTo: stepTo,
+    previewSpan: previewSpan,
     place: place,
     setTech: setTech,
     undo: undo,

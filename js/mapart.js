@@ -62,7 +62,12 @@ var MapArt = (function (CFG, Rng) {
   var RAISED = { woodland: true, hilly: true, rocky: true, settlement: true };
 
   // Single places, drawn as a mark rather than as a patch of ground.
-  var LANDMARKS = { substation: 'mark-substation', customer: 'mark-customer', benefit: 'mark-benefit' };
+  var LANDMARKS = {
+    substation: 'mark-substation',
+    customer: 'mark-customer',
+    benefit: 'mark-benefit',
+    grant: 'mark-grant'
+  };
 
   /* What grows on which ground.
 
@@ -376,6 +381,17 @@ var MapArt = (function (CFG, Rng) {
     append(benefit, 'path', {
       d: 'M28 78C44 62 58 44 72 28', class: 'art-mark-vein', fill: 'none'
     });
+
+    /* Connection funding: a coin with a line through it. Round, where every
+       other landmark is built out of straight edges, because it is the only
+       one that is not a place on the ground - it is money. */
+    var grant = landmark('mark-grant', 'grant');
+    append(grant, 'circle', { cx: 50, cy: 50, r: 22, class: 'art-mark' });
+    append(grant, 'circle', { cx: 50, cy: 50, r: 14, class: 'art-mark-hot' });
+    append(grant, 'path', {
+      d: 'M50 36v28M43 43h11a5 5 0 0 1 0 10h-8a5 5 0 0 0 0 10h11',
+      class: 'art-mark-vein', fill: 'none'
+    });
   }
 
   /* ---------------------------------------------------------------------
@@ -491,7 +507,17 @@ var MapArt = (function (CFG, Rng) {
         });
       }
 
-      append(land, 'path', { class: 'art-region art-' + typeId, d: d, 'fill-rule': 'evenodd' });
+      /* The fill is named here but still valued in the stylesheet, so the
+         colour stays a brand token and a new kind of ground needs no new
+         CSS rule - only a token, and only if the farmland fallback is not
+         wanted. Set as an inline style rather than a fill attribute:
+         presentation attributes do not accept var(). */
+      append(land, 'path', {
+        class: 'art-region art-' + typeId,
+        style: 'fill: var(--brand-land-' + typeId + ', var(--brand-land-farmland))',
+        d: d,
+        'fill-rule': 'evenodd'
+      });
 
       if (HATCHED[typeId]) {
         append(land, 'path', {
@@ -602,11 +628,16 @@ var MapArt = (function (CFG, Rng) {
     }
 
     /* --- 7. the route --------------------------------------------------
-       Left empty. render.js owns everything in here and repaints it on
-       every move; nothing else in this file is touched again. */
+       Both left empty. render.js owns everything in them and repaints them
+       as the game goes; nothing else in this file is touched again.
+
+       The ghost comes first so it sits UNDER the player's own line: it is
+       shown after the game is over, and the route the player actually built
+       is still the one that should read first. */
+    var ghost = append(root, 'g', { class: 'art-ghost' });
     var route = append(root, 'g', { class: 'art-route' });
 
-    return { svg: root, route: route };
+    return { svg: root, route: route, ghost: ghost };
   }
 
   return {

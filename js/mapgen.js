@@ -330,6 +330,48 @@ var MapGen = (function (CFG, Rng, Score) {
     return cells;
   }
 
+  /* Connection funding, on the far side of the map from the way round.
+
+     placeRewards puts its cells on the gap rows, which is where a good
+     route was always going to go - they reward a route for being where it
+     already wanted to be. These do the opposite. The side away from the gap
+     is the side with the town on it and the lake in it, and until now it
+     was nothing but a place to lose points. Putting the money there turns
+     it into a question: is what this pays worth what it costs to reach?
+
+     Kept off the row the line starts on, because funding sitting on the
+     direct line is not a detour and not a decision.
+     ------------------------------------------------------------------- */
+  function placeGrants(grid, rng, gen, gapSide) {
+    var cols = CFG.grid.cols;
+    var rows = CFG.grid.rows;
+
+    // The band opposite the one placeRewards used.
+    var first = gapSide === 'n' ? rows - gen.sssi.gapRows : 0;
+    var last = gapSide === 'n' ? rows - 1 : gen.sssi.gapRows - 1;
+
+    var open = [];
+    for (var row = first; row <= last; row++) {
+      if (Math.abs(row - CFG.start.row) < 2) { continue; }
+      for (var col = 1; col < cols - 1; col++) {
+        if (SOFT[grid[row][col]]) { open.push([col, row]); }
+      }
+    }
+    Rng.shuffle(rng, open);
+    // Spread across the map rather than bunched, so one detour rarely takes both.
+    open.sort(function (a, b) { return a[0] - b[0]; });
+
+    var cells = [];
+    var wanted = gen.rewards.grants || 0;
+    var stride = Math.max(1, Math.floor(open.length / Math.max(1, wanted)));
+
+    for (var i = 0; i < open.length && cells.length < wanted; i += stride) {
+      grid[open[i][1]][open[i][0]] = 'grant';
+      cells.push({ col: open[i][0], row: open[i][1], typeId: 'grant' });
+    }
+    return cells;
+  }
+
   /* ---------------------------------------------------------------------
      Building one candidate
      ------------------------------------------------------------------- */
@@ -366,6 +408,7 @@ var MapGen = (function (CFG, Rng, Score) {
     var town = growBlob(grid, rng, [cols - 1, townRow], gen.town.cells, 'settlement');
 
     var rewards = placeRewards(grid, rng, gen, gapSide);
+    var grants = placeGrants(grid, rng, gen, gapSide);
 
     /* The lake goes on the far side from the gap as well. It is the one
        thing on the map the route can never enter, so it must not stand
@@ -392,6 +435,7 @@ var MapGen = (function (CFG, Rng, Score) {
         town: town,
         lake: lake,
         rewards: rewards,
+        grants: grants,
         gapSide: gapSide
       }
     };
@@ -440,6 +484,64 @@ var MapGen = (function (CFG, Rng, Score) {
     var spare = build(gen.fallbackSeed);
     spare.verdict = check ? check(spare.rows) : null;
     spare.tries = rejected;
+    spare.fellBack = true;
+    return spare;
+  }
+
+  /* ---------------------------------------------------------------------
+     One landscape a day
+     ---------------------------------------------------------------------
+     The same landscape for everybody, for as long as the day lasts, with no
+     server and nothing stored. It works because the whole generator is
+     already a pure function of a seed: give every player the same seed and
+     they are playing the same puzzle.
+
+     The date is taken in UTC on purpose. Local dates would hand two people
+     in different time zones different landscapes and call them both today's,
+     which is the one thing a shared puzzle cannot do.
+
+     Rerolling is deterministic too - attempt 0, then 1, then 2 - so two
+     players do not merely start from the same seed, they walk the same path
+     to the same accepted map. A random reroll would defeat the entire point.
+     ------------------------------------------------------------------- */
+
+  function twoDigits(n) { return (n < 10 ? '0' : '') + n; }
+
+  function todayUTC(now) {
+    var when = now || new Date();
+    return when.getUTCFullYear() + '-' +
+      twoDigits(when.getUTCMonth() + 1) + '-' +
+      twoDigits(when.getUTCDate());
+  }
+
+  function dailySeed(dateText, attempt) {
+    return Rng.seedString(
+      Rng.make('daily:' + dateText + ':' + attempt),
+      CFG.generator.seedLength);
+  }
+
+  function daily(dateText, checker) {
+    var when = dateText || todayUTC();
+    var check = checker || (typeof Balance !== 'undefined' ? Balance.verdict : null);
+
+    for (var attempt = 0; attempt < CFG.generator.maxTries; attempt++) {
+      var candidate = build(dailySeed(when, attempt));
+      var judged = check ? check(candidate.rows) : { ok: true };
+      if (judged.ok) {
+        candidate.verdict = judged;
+        candidate.tries = attempt + 1;
+        candidate.daily = when;
+        return candidate;
+      }
+    }
+
+    /* Every roll for this date was rejected, which would otherwise mean no
+       puzzle today. The fallback is verified at design time and is the same
+       for everyone, so the day still has one landscape rather than none. */
+    var spare = build(CFG.generator.fallbackSeed);
+    spare.verdict = check ? check(spare.rows) : null;
+    spare.tries = CFG.generator.maxTries;
+    spare.daily = when;
     spare.fellBack = true;
     return spare;
   }
@@ -522,6 +624,45 @@ var MapGen = (function (CFG, Rng, Score) {
       var problems = Score.validateMap(rows);
       check('the map passes the scoring engine checks',
         problems.length === 0, problems.join('; '));
+
+      /* The route the balance search reports as best is also drawn on the
+         map when a game ends, and a corridor that does not score what the
+         verdict says it scores would be worse than none at all. So the
+         traced route is scored back through the engine and the two figures
+         have to agree exactly.
+
+         Only asked of maps the checks accept: a rejected map is never shown
+         and never has its best route drawn. */
+      var balance = typeof Balance !== 'undefined' ? Balance : null;
+      if (balance && balance.traceBest) {
+        var judged = balance.verdict(rows);
+        if (judged.ok) {
+          var target = judged.found.allRound;
+          var chain = balance.traceBest(rows, target.packed);
+
+          if (!chain) {
+            check('the best route on this map can be traced', false, 'no route came back');
+          } else {
+            var before = Score.mapRows();
+            Score.setMap(rows);
+            var scored = Score.scoreRoute(chain);
+            if (before.length) { Score.setMap(before); }
+
+            check('the traced best route scores what the search says it does',
+              scored.dials.cost === target.dials.cost &&
+              scored.dials.env === target.dials.env &&
+              scored.dials.comm === target.dials.comm,
+              'traced ' + scored.dials.cost + '/' + scored.dials.env + '/' + scored.dials.comm +
+              ', expected ' + target.dials.cost + '/' + target.dials.env + '/' + target.dials.comm);
+
+            var ends = chain[chain.length - 1];
+            check('the traced best route runs end to end through a substation',
+              chain[0].col === CFG.start.col && chain[0].row === CFG.start.row &&
+              ends.col === CFG.end.col && ends.row === CFG.end.row &&
+              scored.crossesSubstation);
+          }
+        }
+      }
     });
 
     /* The fallback seed is only worth having if it is still any good, and
@@ -546,6 +687,8 @@ var MapGen = (function (CFG, Rng, Score) {
   return {
     build: build,
     generate: generate,
+    daily: daily,
+    todayUTC: todayUTC,
     selfTest: selfTest
   };
 

@@ -20,6 +20,7 @@
     <h1 id="gameTitle">Connecting the Grid</h1>
     <div class="topbar-actions">
       <button type="button" class="btn" id="newMapButton"></button>
+      <button type="button" class="btn" id="dailyButton"></button>
       <button type="button" class="btn" id="undoButton"></button>
       <button type="button" class="btn" id="resetButton"></button>
       <button type="button" class="btn btn-quiet" id="instructionsTab"></button>
@@ -41,6 +42,30 @@
         <p class="hint" id="techHint"></p>
       </section>
 
+      <section class="panel">
+        <label class="switch">
+          <input type="checkbox" id="committedToggle">
+          <span id="committedLabel"></span>
+        </label>
+        <p class="hint" id="committedHint"></p>
+      </section>
+
+      <p class="seed-line">
+        <span id="seedLabel"></span>
+        <code id="seedValue"></code>
+        <span class="difficulty" id="difficulty" hidden></span>
+      </p>
+
+      <!-- Type a landscape's name to play that exact landscape again. The
+           generator has always honoured a seed given to it; this is the
+           first way to give it one. -->
+      <form class="seed-form" id="seedForm">
+        <input type="text" id="seedInput" autocomplete="off" spellcheck="false"
+               maxlength="12" size="8">
+        <button type="submit" class="btn btn-small" id="seedGo"></button>
+      </form>
+      <!-- The legend goes last on purpose. It is the only panel that
+           grows, and anything under it is pushed out of view when it does. -->
       <details class="panel legend-drawer">
         <summary id="legendHeading">What the land means</summary>
         <ul class="legend" id="legend"></ul>
@@ -48,11 +73,6 @@
           Numbers read cost / environment / community, per cell.
         </p>
       </details>
-
-      <p class="seed-line">
-        <span id="seedLabel"></span>
-        <code id="seedValue"></code>
-      </p>
 
     </aside>
 
@@ -89,9 +109,26 @@
   <p class="sheet-eyebrow" id="verdictHeading">Verdict</p>
   <h2 id="verdictTitle"></h2>
   <p id="verdictBody"></p>
-  <form method="dialog">
-    <button type="submit" class="btn" id="verdictClose"></button>
-  </form>
+
+  <!-- Filled in from the balance search: how the route compares with the
+       best one the checker found on this landscape. -->
+  <p class="sheet-par" id="verdictPar" hidden></p>
+
+  <!-- The result as plain text. Shown only when the clipboard is not
+       available, which on file:// is most of the time. -->
+  <label class="sheet-share" id="verdictShareBox" hidden>
+    <span id="verdictShareHint"></span>
+    <textarea id="verdictShareText" readonly rows="6"></textarea>
+  </label>
+
+  <div class="sheet-actions">
+    <button type="button" class="btn btn-primary" id="verdictAgain"></button>
+    <button type="button" class="btn" id="verdictBest"></button>
+    <button type="button" class="btn" id="verdictShare"></button>
+    <form method="dialog">
+      <button type="submit" class="btn" id="verdictClose"></button>
+    </form>
+  </div>
 </dialog>
 
 <!-- Plain scripts in dependency order. Deliberately not ES modules: module

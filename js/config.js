@@ -256,6 +256,22 @@ var CONFIG = {
       texture: 'landmark',
       description: 'Land offered under a community benefit scheme. Welcomed locally, and free to cross.'
     },
+    grant: {
+      id: 'grant',
+      label: 'Connection funding',
+      /* The only ground on the map that GIVES cost back, which is why it is
+         marked fixedCost: a grant is a sum agreed in advance and does not
+         grow because the scheme chose a dearer technology. Every other
+         number here behaves exactly as it does everywhere else. */
+      cost: -4,
+      fixedCost: true,
+      envImpact: 0,
+      commImpact: 0,
+      passable: true,
+      icon: 'img/grant.svg',
+      texture: 'plain',
+      description: 'A funded connection point. Routing through it brings money to the scheme, but it is nowhere near the direct line.'
+    },
     substation: {
       id: 'substation',
       label: 'Substation',
@@ -407,7 +423,12 @@ var CONFIG = {
     sssi: { cols: [3, 6], span: 3, gapRows: 2 },
     town: { cells: 6 },
     lake: { cells: 3 },
-    rewards: { benefit: 2, customers: 2 }
+    /* benefit and customers go on the gap rows, where the way round the
+       designated land already runs. 'grants' go on the OPPOSITE side, which
+       is the side with the town and the lake on it - so the half of the map
+       that only ever punished a route now has something to offer, and going
+       that way becomes a question rather than a mistake. */
+    rewards: { benefit: 2, customers: 2, grants: 2 }
   },
 
 
@@ -420,7 +441,8 @@ var CONFIG = {
         F  farmland          W  woodland          C  connection customer
         R  road              V  river             B  community benefit
         K  rocky ground      S  designated land   X  substation
-        H  hills             T  houses/industry   ~  open water (blocked)
+        H  hills             T  houses/industry   G  connection funding
+                                                  ~  open water (blocked)
      --------------------------------------------------------------------- */
 
   legend: {
@@ -434,6 +456,7 @@ var CONFIG = {
     'T': 'settlement',
     'C': 'customer',
     'B': 'benefit',
+    'G': 'grant',
     'X': 'substation',
     '~': 'water'
   },
@@ -450,7 +473,15 @@ var CONFIG = {
       label: 'Cost',
       goodDirection: 'A high score means the connection is affordable.',
       lowLabel: 'Over budget',
-      highLabel: 'Affordable'
+      highLabel: 'Affordable',
+      /* Shows the running total against the budget underneath the meter, so
+         "78 out of 100" also reads as "28 of 130 spent". Set 'budget' to the
+         name of the figure in 'budgets' this dial is measured against, and
+         'spend' to which running total to show. Leave both off a dial and
+         nothing is shown, which is right for the two that have no budget to
+         run out of. */
+      budget: 'COST_BUDGET',
+      spend: 'cost'
     },
     {
       id: 'env',
@@ -476,6 +507,44 @@ var CONFIG = {
     { min: 50, word: 'fair' },
     { min: 30, word: 'poor' },
     { min: 0, word: 'very poor' }
+  ],
+
+
+  /* -----------------------------------------------------------------------
+     DIFFICULTY
+     How hard the landscape in play is, in a word.
+
+     Read off the best weakest dial any route on the map reaches, which the
+     balance search works out before the map is ever shown. Every accepted
+     map scores at least balancedThreshold, so the interesting range is
+     narrow and these bands are set from a measured sweep rather than from
+     round numbers: across 500 seeds the figure ran from 70 to 77.7 with a
+     median of 73.1. Re-measure with `node js/balance.js --seeds 500` before
+     moving them.
+
+     Checked top down, like 'bands' below.
+     --------------------------------------------------------------------- */
+  difficulty: [
+    { min: 76, word: 'Generous', hint: 'There is room to score well on all three here.' },
+    { min: 73, word: 'Fair', hint: 'A balanced route exists, with something to spare.' },
+    { min: 0,  word: 'Tight', hint: 'The balanced route on this landscape is a narrow one.' }
+  ],
+
+
+  /* -----------------------------------------------------------------------
+     ENCOURAGEMENT
+     Added under the verdict, comparing the route just built with the best
+     one the balance search found on the same landscape.
+
+     'min' is the player's weakest dial as a PERCENTAGE of that best one, so
+     100 means they matched it. Checked top down.
+     --------------------------------------------------------------------- */
+  encouragement: [
+    { min: 100, text: 'That is the best route anyone has found on this landscape.' },
+    { min: 96,  text: 'Within a whisker of the best route on this landscape.' },
+    { min: 88,  text: 'A strong route. A little more was on the table.' },
+    { min: 75,  text: 'A workable route, though a good deal more was available here.' },
+    { min: 0,   text: 'There is a considerably better route through this landscape.' }
   ],
 
 
@@ -533,11 +602,17 @@ var CONFIG = {
 
     // The top bar
     newMapButton: 'New landscape',
+    dailyButton: "Today's landscape",
     tabInstructions: 'How to play',
     undo: 'Undo',
     reset: 'Start again',
     closeButton: 'Close',
     seedLabel: 'Landscape',
+    seedDailyLabel: "Today's landscape",
+    seedInputLabel: 'Play a named landscape',
+    seedInputPlaceholder: 'Name',
+    seedGo: 'Go',
+    errSeedEmpty: 'Type the name of a landscape first.',
 
     techHeading: 'Technology',
     techHint: 'Change it as often as you like. It applies to the next span you build, not to the ones already up.',
@@ -564,9 +639,33 @@ var CONFIG = {
 
     legendHeading: 'What the land means',
     verdictHeading: 'Verdict',
+    verdictAgain: 'New landscape',
+    verdictBest: 'Show the best route found',
+    verdictShare: 'Copy result',
+    verdictShareCopied: 'Result copied to the clipboard.',
+    verdictShareHint: 'Copying is not allowed here. Select this and copy it yourself.',
+    // The heading line of the copied result. {seed} is the landscape's name.
+    shareTitle: 'Connecting the Grid - {seed}',
+    shareDaily: 'Connecting the Grid - {date}',
+    sharePar: 'Best route found here: {par}',
+    verdictBestShown: 'The best route found on this landscape is marked on the map.',
+    verdictBestMissing: 'The best route on this landscape could not be drawn.',
 
-    // On the arrows, and on a square with nothing worth saying about it.
-    chevronLabel: 'Send the line to the {side}.',
+    /* The comparison under the verdict. 'par' is the best weakest dial the
+       balance search found on this landscape - see the note by it in
+       js/balance.js about why it is "found" and not "possible". */
+    parLine: 'Your weakest dial finished at {yours}. The best route found on this landscape reaches {par}.',
+    // Used instead, when the route matched or beat that best one - repeating
+    // the same number twice in one breath says nothing.
+    parLineMatched: 'Your weakest dial finished at {yours}.',
+    difficultyLabel: 'Difficulty',
+
+    /* On the arrows, and on a square with nothing worth saying about it.
+       The arrow names the ground it leads into, because that is the part of
+       the choice the meters cannot show: the span being paid for now is the
+       highlighted square's whichever way the line leaves, so the direction
+       is a choice about what comes NEXT. */
+    chevronLabel: 'Send the line to the {side}, into {terrain}.',
     chevronDeadLabel: 'The line cannot go this way.',
     tipImpassable: 'Cannot be crossed',
 
@@ -580,9 +679,10 @@ var CONFIG = {
       'Click one of the arrows on that square to send the line that way. Clicking the square itself carries straight on, and you can hold the mouse down and drag to draw a run in one go. Dragging back over the line rubs it out.',
       'From the keyboard: arrow keys move around the map, and an arrow key pressed on the highlighted square sends the line that way. Press 1, 2 or 3 to change technology.',
       'Choose the technology before each span. Lattice towers are cheapest and the most visible; T-pylons cost more and sit more quietly; underground cable hides the line almost entirely but is enormously expensive, and cannot be taken through a river.',
-      'Hover over any square to see what the land is and what crossing it costs. Watch the three meters as you build - a route that scores well on all three is the one that gets consent.',
+      'Hover over any square to see what the land is and what crossing it costs. On the square in play, the dashed marks inside the three meters show where each one lands if you build it - change technology and watch them move. That is the trade-off, before you have paid for it rather than after.',
+      'The arrows say what they lead into. Most ground costs you something; a funded connection point pays you back, but it is never near the direct line.',
       'The line must pass through a substation to be energised, and it must arrive at the demand centre rather than run past it.',
-      'Every landscape is generated and checked before you see it, so a balanced route always exists. New landscape rolls another one.'
+      'Every landscape is generated and checked before you see it, so a balanced route always exists. New landscape rolls another one, and Today\'s landscape is the one everybody else is playing today. When you finish, the verdict says what the best route found here scores, and can draw it on the map.'
     ],
 
     // How each cell is described to a screen reader. The {braces} are filled
@@ -596,8 +696,18 @@ var CONFIG = {
     cellIsEnd: 'Demand centre, where the route must finish.',
     cellIsHead: 'End of the route so far.',
 
+    /* Spoken and shown in the tooltip when the square under the pointer is
+       the one the next span goes on: where the three dials land if it is
+       built on the technology currently chosen. The meters show the same
+       thing as a ghost marker, which a screen reader cannot see. */
+    tipPreview: 'Building here on {tech}: cost {cost}, environment {env}, community {comm}.',
+
     // The three meters.
     meterReading: '{label}: {value} out of 100, {band}.',
+    meterSpend: '{spent} of {budget} spent',
+
+    committedLabel: 'Committed mode',
+    committedHint: 'Spans cannot be taken down once they are up, the way they cannot on site.',
 
     boardLabel: 'Route map, {cols} columns by {rows} rows'
   },

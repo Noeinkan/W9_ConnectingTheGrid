@@ -508,3 +508,166 @@ must hold at both. This is the objective form of "fits on a laptop screen".
 ## 10. Out of scope
 
 Isometric 2.5D, WebGL, a build step, a framework, hex grids, multiplayer, persistence, and sharing a seed by URL. Seeds *are* shareable strings, so the URL parameter is a small later addition if it is ever wanted.
+
+
+---
+
+# Round two
+
+The game as built worked. Three things were still wrong with it, and one of
+them had been sitting in the repository the whole time.
+
+**The player was asked to trade blind.** The three dials only moved once a
+span was already up. A game whose entire subject is "see what you give up and
+what you get" was showing the price after the purchase.
+
+**The best answer was computed and thrown away.** `Balance.explore` works out
+the exact Pareto frontier for every landscape before it is ever shown -
+`best`, `allRound`, `cheapest` - and `MapGen.generate` hangs it on
+`built.verdict`. `Game.newMap` discarded it. The game knew how good a route
+was available on the map in play, and never said so.
+
+**There was no reason to come back.** No way to replay a landscape, send one
+to anybody, or measure a route against anything.
+
+## 1. Groundwork
+
+**One tie-break.** `Score.verdictKeyFor` broke a tie between two equally low
+dials towards cost; `Balance.readingFor` broke the same tie towards community.
+Since `generator.punishCheapOn` filters maps on `cheapest.lowest`, a map could
+be accepted for a reason the player's verdict would never give. `Score.lowestDial`
+is now the single answer and both call it. Measured across the same 500 seeds
+before and after: no acceptance decision changed. It was a latent
+inconsistency rather than a live bug, and it is now impossible to reintroduce.
+
+**Config really is the only file now.** `cellTypes[*].icon` was dead - legend
+icons were twelve hard-coded CSS rules, and the twelve `.art-*` region fills
+were another twelve. Both sets are gone; the legend and the drawn regions read
+their icon and their colour token from the type. `CONFIG.markers` was dead
+too, and now dresses the two end pins.
+
+One trap worth recording: the legend icon **cannot** be passed through a CSS
+custom property. A `url()` carried in a custom property resolves against the
+stylesheet that used the `var()`, not against the page, so `img/x.svg` is
+looked for in `css/img/` and quietly fails. It is set as `background-image`
+directly, and the comment in `render.js` says why.
+
+## 2. The span before it is built
+
+`Game.previewSpan()` returns where the three dials land if the highlighted
+square is built, and `refresh()` puts it on the state for `render.js` to paint
+as a second, ghosted marker inside each meter bar.
+
+The important design point is what it does **not** depend on: direction. The
+piece is laid on the highlighted square, so the ground being paid for is that
+square's whichever way the line then leaves - all three arrows would have
+shown the same number. What *does* move the reading is the technology, and
+that is the choice worth informing. Lattice, pylon or cable across this
+square, and here is what each does to the dials.
+
+Direction is a different question, and it is now answered where it is asked:
+the arrows name the ground they lead into, which is what the first plan
+specced and the first build shipped without.
+
+The ghost marker is invisible to a screen reader, so the tooltip carries the
+same reading in words on the square in play.
+
+## 3. Par, difficulty, and the best route drawn
+
+`Game.newMap` keeps `built.verdict.found`. From it:
+
+* a difficulty badge beside the seed, banded on `allRound.weakest` against a
+  **measured** distribution (500 seeds: 70 to 77.7, median 73.1) rather than
+  against round numbers;
+* a comparison under the verdict, with an encouragement tier keyed on the
+  player's weakest dial as a share of that best one;
+* and the route itself, drawn on the map on request.
+
+`Balance.traceBest` is the largest piece of this. `explore` packs three totals
+into one integer and sorts numerically, which is why generation can afford to
+reroll two dozen times - so the fast path is not instrumented. Instead
+`advance` takes an optional `note` callback and `explore` an optional tracer,
+both absent on the generator's path; `traceBest` runs the same search once, on
+demand, after the game is over, recording where every state came from and
+walking the answer back from the finishing total. The technology is recovered
+from how much each step *added*, which the totals alone could not say.
+
+Nothing is drawn unless the traced route scores exactly what the search said
+the best route scores. `MapGen.selfTest` asserts that on every fixed seed.
+
+**Say "the best route found", never "the best possible".** The search is
+west-free and prunes below `DEFAULT_FLOOR`, so it is a strong benchmark and
+not a proof of the optimum. The copy in `config.js` is written that way on
+purpose, and should stay that way.
+
+## 4. Somewhere to come back to
+
+`?seed=XXXXXX` plays that exact landscape - the generator always honoured an
+explicit seed, and nothing had ever handed it one. `?daily` plays the same
+landscape as everybody else that day: `MapGen.daily` derives its seed from the
+**UTC** date plus a deterministic attempt counter, so two players do not merely
+start from the same seed, they walk the same path to the same accepted map.
+Checked across all 365 days of 2026: every day is accepted, none falls back to
+the spare seed, and no landscape repeats.
+
+State lives in the address bar and nowhere else. There is no `localStorage`,
+no best scores and no streaks, which keeps the promise the first plan made.
+
+The result copies as plain text with block-character bars. The clipboard
+fallback is not a nicety: `navigator.clipboard` needs a secure context and
+`file://` is not one, and `file://` is a supported way to run this game. The
+selectable textarea is the ordinary path, not the exceptional one.
+
+## 5. Two mechanics
+
+**Committed mode.** `rules.allowUndo` already existed, was already respected,
+and already had its refusal message written. It only ever lacked a switch. One
+fix was needed: a backward drag called `undo()` on every pointer move, which
+under this mode would have fired the live region dozens of times to refuse. A
+drag that cannot rub out now simply does not rub out.
+
+**Connection funding.** The only ground on the map that gives cost back. It
+needed one honest special case: `fixedCost`, which stops the technology
+multiplier applying. Without it, undergrounding through a grant would refund
+six times the sum, which is not a trade-off, it is a bug with a story.
+
+It also broke an assumption the balance search was documented on: "cost only
+rises, because no cell refunds it". Cost can now come back, so the pruning
+bound is no longer the budget but the budget plus every refund left on the map
+- loose on purpose, since a bound that is too tight throws away routes that
+would have been reported, and one that is too loose only costs time.
+
+Placement is the point. `placeRewards` puts benefit and customer cells on the
+gap rows, rewarding a route for being where it already wanted to be. Funding
+goes on the **opposite** side - the side with the town on it and the lake in
+it, which until now was nothing but a place to lose points. It is a question
+now.
+
+Acceptance across the same 500 seeds went from 73.6% to 74.6%.
+
+**Not done, deliberately:** cost was not made a hard cap. A hard cap can
+render a generated map unwinnable, which is the exact class of bug this game
+shipped once already. The spend is shown against the budget as text instead.
+
+## 6. What was checked
+
+Every change was run in headless Chrome against the real page, not only
+parsed. Beyond the three existing suites (`score` 9 checks, `mapgen` 71 - up
+from 61 - and the 500-seed sweep):
+
+* the previewed dials match what the span actually scores, exactly;
+* the traced best route, played back through the game, finishes on the par
+  figure to the decimal;
+* `?seed=` and `?daily` both give the same landscape twice, from `file://`;
+* the clipboard fallback shows, focuses and selects when `navigator.clipboard`
+  is taken away;
+* a real pointer drag rubs out in normal mode and is silent in Committed mode;
+* the page does not scroll at 1280x720, 1366x768, 1920x1080 or 1100x700, with
+  the legend open and closed. The legend drawer was moved to the foot of the
+  rail for this: it is the only panel that grows, and anything under it was
+  pushed out of view when it did.
+
+## 7. Still out of scope
+
+Sound, the draw-on animation, the dark-theme toggle, and persistence of any
+kind.
