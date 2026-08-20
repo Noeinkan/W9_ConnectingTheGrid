@@ -1,0 +1,510 @@
+# Connecting the Grid — rebuild plan
+
+Procedural landscapes, an SVG map, an app shell that fits, and route-drawing input.
+
+---
+
+## 1. Context
+
+The prototype plays correctly and the scoring model is sound. Four things are wrong with it, and they were raised in this order:
+
+1. **It does not read as a map.** Every terrain region is a run of hard-edged squares. The last round of work (seamless squares, scattered symbols, field lines drawn once over the whole board) helped, but there is a ceiling: a square is still a square, and a wood made of five squares still looks like five squares.
+2. **It does not fit a laptop screen.** At 1920×990 the technology picker, the controls and the legend are all below the fold. The page is a *document that contains a game* rather than an *application*.
+3. **The commands are confusing.** The player picks an abstract blue bar from a six-tile palette, then drops it on the one highlighted square.
+4. **The map is a single hand-authored string**, so every play is the same puzzle.
+
+Point 3 deserves attention, because the fix is nearly free. [js/game.js:19](js/game.js#L19) already documents the key fact:
+
+> So there is never more than one legal target square. The choice the player makes is which shape to put on it.
+
+And of the six pieces, only those that open on `state.needSide` can ever fit — at most three. So the palette is an abstract, indirect way of asking *"straight, left, or right?"*. Replacing it with direction chevrons on the target square fixes the confusing input **and** reclaims the sidebar height that is pushing everything off screen. One change, two complaints.
+
+### Decisions taken
+
+| Question | Decision | Why |
+|---|---|---|
+| Language / stack | **Plain JS + HTML, no build step** | The reference game is DOM + PNGs with no framework. SVG needs no libraries. Stays double-clickable; generator and validator still run under Node for testing. |
+| Rendering | **SVG art layer over the existing DOM grid** | Vector outlines are the one thing we actually need and canvas/WebGL does not give: we can trace a region's boundary and smooth it. An 11×9 static board is nowhere near needing WebGL. |
+| Map data | **Procedurally generated from a seed, then validated for balance** | "New landscape" button. Every map is checked solvable and genuinely balanced before it is shown. |
+| Input | **Draw the route** — click or drag toward the next square | The piece is inferred from direction. Rules and scoring untouched. |
+| Layout | **Fluid app shell, never scrolls** | Fills exactly `100dvh` at 1280×720 and 1920×1080. |
+
+### What explicitly does not change
+
+The scoring model, the six pieces as a data model, the technologies, the substation requirement, the no-revisit rule, the verdicts and bands, and the layering discipline: **`config` → `score` → `render` → `game`, with no module reaching backwards.** `score.js` stays pure and Node-loadable. `render.js` keeps no state and decides no rules. `game.js` never touches the DOM.
+
+---
+
+## 2. Architecture
+
+### File map
+
+```
+index.html          rewritten — app shell markup
+css/style.css       rewritten layout; brand tokens kept as-is
+js/config.js        map[] removed, generator{} added, input copy rewritten
+js/rng.js           NEW  seeded PRNG + value noise + fBm
+js/mapgen.js        NEW  seed -> map grid + named features
+js/score.js         + setMap(); reads the active map instead of CFG.map
+js/balance.js       NEW  Pareto route search: runtime validator + CLI design tool
+js/mapart.js        NEW  the SVG landscape
+js/render.js        board dressing removed; route path, chevrons, tooltip added
+js/game.js          + stepTo(), drag, arrow-to-lay, newMap()
+img/*.svg           reused as <symbol> definitions in the SVG
+```
+
+### Load order
+
+```html
+<script src="js/config.js"></script>   <!-- no deps -->
+<script src="js/rng.js"></script>      <!-- no deps -->
+<script src="js/mapgen.js"></script>   <!-- CONFIG, Rng -->
+<script src="js/score.js"></script>    <!-- CONFIG -->
+<script src="js/balance.js"></script>  <!-- CONFIG, Score -->
+<script src="js/mapart.js"></script>   <!-- CONFIG, Rng -->
+<script src="js/render.js"></script>   <!-- CONFIG, Score, MapArt -->
+<script src="js/game.js"></script>     <!-- everything -->
+```
+
+Still plain `<script>` tags, deliberately not ES modules, so `index.html` opens off `file://`. Each new file follows the existing IIFE-returning-one-global convention and guards `module.exports` for Node.
+
+### Boot sequence
+
+```
+Game.init()
+  └─ Game.newMap(seed?)
+       ├─ MapGen.generate(seed)         →  { rows, features, seed }
+       │    └─ loop: build candidate → Score.setMap → Balance.verdict
+       │            → accept, or reroll (up to CONFIG.generator.maxTries)
+       ├─ Score.setMap(rows)            →  installs it, clears the grid cache
+       ├─ MapArt.draw(rows, features)   →  builds the SVG, once
+       ├─ Render.buildBoard(...)        →  the DOM button grid, once
+       └─ Game.reset()                  →  clears the route, paints
+```
+
+---
+
+## 3. Phase 1 — the app shell
+
+Fixes complaint 2. Leaves the game playable on its own.
+
+### Target layout
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Connecting the Grid      [New landscape] [How to play] [↶] │  auto
+├──────────────┬──────────────────────────────────────────────┤
+│ Cost   ▓▓▓▓░ │                                              │
+│ Env    ▓▓▓░░ │                                              │
+│ Comm   ▓▓░░░ │            T H E   M A P                     │  1fr
+│              │      (fills whatever is left, both ways)     │
+│ ── Technology│                                              │
+│ [Lat][T-p][C]│   hover or focus a square → its tooltip      │
+│              │                                              │
+│ ▸ What the   │                                              │
+│   land means │                                              │
+├──────────────┴──────────────────────────────────────────────┤
+│ status line, aria-live=polite                               │  auto
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Markup
+
+`index.html` becomes:
+
+- `<div class="app">` — the `100dvh` grid, rows `auto / minmax(0,1fr) / auto`
+- `<header class="topbar">` — title, then `New landscape`, `How to play`, `Undo`, `Start again`. The masthead strapline moves into the instructions dialog; it is not worth 3rem of vertical space on every play.
+- `<div class="app-main">` — columns `17rem / minmax(0,1fr)`
+  - `<aside class="rail">` — meters, technology segmented control, `<details class="legend-drawer">`
+  - `<div class="stage">` — `<div class="board-wrap">` containing the SVG art layer, the DOM cell grid, the chevron overlay and the tooltip
+- `<p class="status" role="status" aria-live="polite">`
+- The two `<dialog>`s, unchanged in structure.
+
+### CSS
+
+```css
+html, body { height: 100%; }
+body { margin: 0; overflow: hidden; }
+
+.app {
+  height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.app-main {
+  display: grid;
+  grid-template-columns: 17rem minmax(0, 1fr);
+  gap: 0.75rem;
+  min-height: 0;            /* see note below */
+  padding: 0.75rem;
+}
+
+.rail  { display: grid; gap: 0.75rem; align-content: start;
+         overflow-y: auto; min-height: 0; }
+
+.stage { display: grid; place-items: center;
+         min-height: 0; min-width: 0; container-type: size; }
+
+.board-wrap {
+  aspect-ratio: var(--cols) / var(--rows);
+  width: min(100cqw, 100cqh * var(--cols) / var(--rows));
+}
+```
+
+**The `min-height: 0` chain is the whole trick.** A grid or flex child defaults to `min-height: auto`, which means it refuses to shrink below its content — which is exactly why the current layout overflows. Every element between `.app` and `.board-wrap` needs it.
+
+**Container query units size the board.** `100cqw` / `100cqh` are the stage's own dimensions, so `width: min(100cqw, 100cqh * ratio)` picks whichever axis binds and the `aspect-ratio` does the rest. This replaces [css/style.css:458](css/style.css#L458), which currently guesses with `calc((100dvh - 17rem) * var(--cols) / var(--rows))` — a hard-coded 17rem that is wrong the moment anything in the rail changes.
+
+### Component changes in the rail
+
+- **Technology**: three stacked cards (`.tech` at [css/style.css:346](css/style.css#L346)) become one segmented control — three chips in a row, chosen state by fill and a tick. `tech.summary` moves to the `title`/tooltip. Saves ~9rem.
+- **Meters**: keep the banded bar (the 30/70 boundaries matching `CONFIG.bands` are good), but put the label and the numeric value on one line with the bar, not stacked.
+- **Legend**: becomes a `<details class="legend-drawer">`, closed by default, **plus** a hover/focus tooltip on each map square giving that terrain's name, description and cost/env/community. The tooltip is strictly better than a static key — it answers the question where the question is asked. The drawer stays for anyone who wants to scan the whole table.
+- **Controls**: `Undo` and `Start again` move to the top bar as compact buttons. The `Controls` panel disappears.
+- **Pieces panel**: deleted entirely (Phase 2).
+
+### Breakpoints
+
+- `≥ 64rem` — the layout above.
+- `40–64rem` (tablet): rail moves under the stage as a horizontal strip; `.app-main` becomes one column with rows `minmax(0,1fr) auto`. Still no page scroll.
+- `< 40rem` (phone): abandon the fixed shell. `overflow: auto` returns on the body, the board takes full width, and the page scrolls. A 360×640 viewport cannot show a map and its controls at once and pretending otherwise makes both unusable.
+
+---
+
+## 4. Phase 2 — draw the route
+
+Fixes complaint 3. Rules are untouched; only input changes. `state.route` still records a `pieceId` per cell, so scoring, undo, the README's mechanics and the balance search are all unaffected.
+
+### The core insight
+
+For the current target `T` with `needSide` `S`, a piece that fits is exactly a piece whose connectors contain `S`. Its *other* connector is the direction the line leaves in. So **piece choice and exit direction are the same choice**, and direction is the one a player can see.
+
+`game.js` already computes `state.fits` in `recomputeTarget()` at [js/game.js:176](js/game.js#L176). Derive the exits from it — no new rules logic:
+
+```js
+/* The legal ways out of the target square. Each is a piece the player
+   could lay, named by the direction it sends the line rather than by
+   its shape, because direction is what the player is actually choosing. */
+function exitsFromTarget() {
+  if (!state.target) { return []; }
+  return CFG.pieces
+    .filter(function (p) {
+      return state.fits[p.id] && p.connectors.indexOf(state.needSide) >= 0;
+    })
+    .map(function (p) {
+      var dir = p.connectors[0] === state.needSide ? p.connectors[1] : p.connectors[0];
+      return { pieceId: p.id, dir: dir, to: neighbour(state.target.col, state.target.row, dir) };
+    });
+}
+```
+
+`state.exits` joins the state object and `render.js` reads it. The rules stay in `game.js`.
+
+### The new primitive
+
+```js
+/* Lay the piece that sends the line from the target square toward (col,row).
+   (col,row) must be a neighbour of the target. */
+function stepTo(col, row) {
+  var exit = state.exits.filter(function (e) {
+    return e.to.col === col && e.to.row === row;
+  })[0];
+  if (!exit) { /* existing error copy path */ return false; }
+  return place(state.target.col, state.target.row, exit.pieceId);
+}
+```
+
+`place()`, `check()` and every message are reused as they are.
+
+### Four ways to express a direction
+
+| Input | Behaviour |
+|---|---|
+| **Chevrons** | The target square shows up to three chevrons, one per legal exit. Click one. Makes the choice *visible* instead of hiding it behind an abstract palette. |
+| **Click the target itself** | Takes the straight-ahead exit (`OPPOSITE[needSide]`) when it is legal. A long run of straights is one click per cell — the common case. |
+| **Drag** | Pointer down on the target or the route head, then drag across cells. Each cell resolves as the pointer enters the next one. Fastest once learned. |
+| **Arrow keys** | Already move the cursor. Now an arrow pressed *while the cursor is on the target* lays the piece in that direction. `1`/`2`/`3` switch technology. Escape and Undo unchanged. |
+
+### Chevron implementation
+
+Cells are `<button role="gridcell">`, so chevrons cannot nest inside them — nested buttons are invalid. Instead: **one absolutely-positioned overlay** inside `.board-wrap`, holding up to three `<button class="chevron">`, repositioned over the target cell on each paint using `--col` / `--row` custom properties and the grid's own cell size.
+
+The chevrons are `aria-hidden="true"` and `tabindex="-1"`. This is deliberate: the keyboard path (arrow keys on a `role="grid"`) is complete, standard and better, and announcing three extra buttons that duplicate the arrow keys is noise. The decision goes in a comment so nobody "fixes" it later.
+
+Chevrons pointing at a cell that is impassable, off-board or already used get a muted dead-end style — a hint, not a rule. `check()` remains the only thing that decides legality.
+
+### Drag state machine
+
+```
+pointerdown on target or head
+  → drawing = true; board.setPointerCapture(e.pointerId)
+pointermove
+  → col/row from offsetX/offsetY against the board rect  (cheap, no hit-testing)
+  → unchanged cell?              ignore
+  → cell === a legal exit's `to`? stepTo(cell)   — target advances, keep going
+  → cell === previous route cell? undo()          — drawing backwards rubs it out
+  → anything else                 ignore silently (no error spam mid-drag)
+pointerup / pointercancel / lostpointercapture
+  → drawing = false; release capture
+```
+
+Silent rejection during a drag is intentional — the `aria-live` status must not fire on every stray pixel.
+
+### Removed
+
+`Render.buildPalette` and `Render.paintPalette` ([js/render.js:202](js/render.js#L202), [js/render.js:418](js/render.js#L418)), the `.palette` / `.piece` / `.piece-art` CSS, `Game.armPiece` / `Game.disarm`, `state.armedPiece`, the `dragstart`/`dragover`/`drop` HTML5 drag path on cells ([js/render.js:161-178](js/render.js#L161-L178)), and the `Pieces` panel in `index.html`.
+
+`state.fits` **stays** — it is what the chevrons are derived from.
+
+### Copy changes in `CONFIG.copy`
+
+| Key | Now | Becomes |
+|---|---|---|
+| `statusReady` | "Choose a piece, then drop it on the highlighted square…" | "Click the arrow showing where the line should go first." |
+| `statusArmed` | "{piece} selected. Drop it on…" | *deleted* |
+| `statusRouting` | "{n} pieces laid. Keep going…" | "{n} spans built. Keep going east to the demand centre." |
+| `errNoPiece` | "Choose a piece from the palette first." | *deleted* |
+| `errWrongSquare` | "That is not where the line goes next…" | "The line cannot jump. Carry on from the highlighted square." |
+| `errPieceDoesNotFit` / `errStartPiece` | shape language | direction language — "The line cannot double back on itself." |
+| `piecesHeading` / `piecesHint` / `piecesLabel` | — | *deleted* |
+| `instructions[]` | palette-based | rewritten for drawing; add the arrow-key line and `1`/`2`/`3` |
+| new: `newMapButton` | — | "New landscape" |
+| new: `chevronLabel` | — | "Send the line {side}, into {terrain}." (`title` on each chevron) |
+
+`copy.sides` (`{n:'top', e:'right', …}`) is reused for all of it.
+
+---
+
+## 5. Phase 3 — procedural maps
+
+### `js/rng.js`
+
+```
+Rng.make(seed)              mulberry32. Same seed, same map, forever.
+Rng.hash2(x, y, salt)       integer hash → 0..1. No allocation.
+Rng.noise2(seed)            → sampler(x, y): smoothstep-interpolated value
+                              noise on a hashed lattice.
+Rng.fbm(sampler, oct, gain) → sampler(x, y): fractal sum of octaves.
+Rng.pick(rng, array)        weighted / plain choice helpers.
+```
+
+This also replaces the ad-hoc `Math.sin`-based `noise()` currently inline at [js/render.js:66](js/render.js#L66). Both the generator and the art layer draw from it, so scatter positions stay deterministic per seed and never reshuffle under a repaint.
+
+### `js/mapgen.js`
+
+```js
+MapGen.generate(seed) → {
+  seed,
+  rows:     ['HHKRF…', …],                  // 9 strings of 11 chars
+  features: {
+    river:  [[c,r], …],                     // ordered centre-line
+    road:   [[c,r], …],                     // ordered centre-line
+    town:   [[c,r], …],
+    subs:   [[c,r], [c,r]]
+  }
+}
+```
+
+Returning the **ordered feature chains** alongside the character grid matters: the art layer needs the river as a *path* to smooth, and re-deriving an ordering from a set of cells is both harder and ambiguous. The generator already knows the order because it walked it.
+
+Passes, in order:
+
+1. **Base fields.** Two fBm samplers — call them elevation and wetness — thresholded into `farmland / hilly / rocky / woodland`. Thresholds come from `CONFIG.generator.weights`, so the mix is tunable without touching code. Farmland must stay the plurality or the map turns to soup.
+2. **River.** A meandering walk from a random cell on the north edge to one on the south edge, constrained to a column band (`generator.riverBand`, roughly the eastern third) with a per-step lateral drift probability. Widened to two cells at each bend. **This guarantees every west-to-east route crosses the river exactly once and cannot use cable there** — the single most important balance property of the current hand-drawn map.
+3. **Road.** A second, straighter top-to-bottom walk in the western third. Every route also crosses one road.
+4. **Designated land.** One blob grown by seeded flood-fill from a cell placed near the straight line between the endpoints, size from `generator.sssiCells`. Going direct is always the tempting-and-wrong choice.
+5. **Town.** A settlement cluster adjacent to the demand centre; `customer` and `benefit` cells seeded on a plausible detour corridor so a considerate route is rewarded.
+6. **Substations.** Two, placed on demonstrably different corridors (one near the direct line, one off it) so the choice of which to energise through is a real decision.
+7. **Lake.** A small `water` blob placed off the direct line — impassable, and it must not wall the map off, which the validator confirms.
+
+`CONFIG.start` (0,4) and `CONFIG.end` (10,4) stay fixed. Left-to-right framing is what makes the west-free balance search valid, and it is what makes "keep going east" a sensible instruction.
+
+### `js/balance.js`
+
+Promoted from a scratchpad throwaway into a real, committed file, because it is now load-bearing. It is a **west-free Pareto dynamic program**: one vertical run per column, then a step east. Because no route ever doubles back west, revisits are structurally impossible and the search terminates — the naive relaxation does not, since `benefit` cells carry positive community value and create profitable cycles.
+
+```js
+Balance.explore(rows) → {
+  frontier,          // Pareto set of (cost, env, comm) reaching the end
+                     // through at least one substation
+  best:    { cost, env, comm },        // best each dial can reach alone
+  allRound:{ cost, env, comm, weakest },
+  cheapest:{ cost, env, comm }         // the minimum-cost route
+}
+
+Balance.verdict(rows) → { ok, solvable, balanced, nonTrivial, reason }
+```
+
+A candidate map is **accepted** only if all three hold:
+
+- `solvable` — the frontier is non-empty (a route exists that reaches the demand centre through a substation).
+- `balanced` — `allRound.weakest >= CONFIG.balancedThreshold` (70). A balanced verdict must be *achievable*, or the player is being asked to win an unwinnable game.
+- `nonTrivial` — the cheapest route's environment dial is *below* the threshold. The greedy answer must be punished, or there is no decision to make.
+
+Rejected candidates are rerolled up to `CONFIG.generator.maxTries` (default 40); if all fail, fall back to `CONFIG.generator.fallbackSeed`, a seed verified at design time and baked into config.
+
+**Performance.** Totals are quantised (`Math.round(n*4)/4`) and the per-state Pareto set is capped as a safety valve. Target: one full validation under ~20ms, so even ten rerolls are imperceptible. This is measured, not assumed — see verification.
+
+**Also a CLI design tool.** `node js/balance.js --seeds 500` sweeps seeds and reports the acceptance rate and the distribution of `allRound.weakest`, so the generator gets tuned with evidence rather than by eye.
+
+> This tool is how a real pre-existing bug was found last round: at `COST_BUDGET: 60` the balanced verdict was unreachable on **any** route, including on the original hand-drawn map (best weakest dial 53). The budget is now 130 and the validator will hold it honest across every generated seed.
+
+### `js/score.js` changes
+
+`buildGrid()` at [js/score.js:88](js/score.js#L88) reads `CFG.map` once and caches it. Minimal change:
+
+- Add `Score.setMap(rows)` — stores the active map, clears the cached grid.
+- `buildGrid`, `typeIdAt`, `typeAt` and `validateMap` read the active map rather than `CFG.map`.
+- `selfTest()` installs its own fixed test map first, so the assertions stop depending on whatever the generator happened to produce. **This is required**, not optional — without it the test becomes non-deterministic.
+
+The scoring maths, dials, bands and verdicts are untouched. `validateMap()` survives as a generator postcondition — it now catches generator bugs rather than author typos.
+
+---
+
+## 6. Phase 4 — the SVG landscape
+
+Fixes complaint 1. Done last so it draws whatever the generator produces.
+
+### The accessibility contract
+
+`MapArt` emits **one `<svg aria-hidden="true">`, purely decorative**, and the existing DOM grid of `<button role="gridcell">` sits on top of it, transparent. Nothing about the SVG is interactive.
+
+This is the central design decision of the phase. It preserves every bit of accessibility work already done — real buttons, roving tabindex, `aria-label` per cell, `aria-live` status, focus rings, forced-colors support — while the SVG carries all of the beauty and none of the semantics. Under `forced-colors: active` the SVG is simply hidden and the cell borders come back.
+
+### Layer stack, back to front
+
+| # | Layer | Technique |
+|---|---|---|
+| 1 | Paper | Warm off-white base plus `feTurbulence type="fractalNoise"` at low `baseFrequency`, composited at very low opacity. |
+| 2 | Terrain regions | Boundary trace → corner rounding → `filter: url(#rough)`. See below. |
+| 3 | River & road | Smoothed centre-lines, stroked with a casing. See below. |
+| 4 | Scatter | Jittered `<use>` of `<symbol>` trees, rocks, houses. Reuses [img/](img/). |
+| 5 | Relief | Soft offset shadow on the south-east edge of hilly and woodland regions. This is what actually makes terrain read as raised. |
+| 6 | Grid | Very faint — the player still needs to see the cells they are routing through. |
+| 7 | Route | Owned by `render.js`, not `MapArt`. Repainted per move. |
+
+### Layer 2 — regions
+
+Terrain is cell-aligned, so classic interpolating marching squares is the wrong tool. Use an exact **boundary edge-walk**:
+
+1. For every cell in the region emit its four boundary edges as ordered vertex pairs.
+2. Discard every edge shared by two in-region cells. The survivors are exactly the boundary.
+3. Chain the survivors head-to-tail into closed loops. Multiple loops and holes go into one `<path>` with `fill-rule: evenodd`.
+
+Then make it organic, in two steps:
+
+- **Jitter** each loop vertex by seeded noise, a few percent of a cell. Same seed as the map, so it never moves.
+- **Round** every corner: for vertex `V` with neighbours `P` and `N`, take `r = min(radius, |PV|/2, |VN|/2)`, line to `V - r·û(V−P)`, then a quadratic Bézier with control point `V` to `V + r·û(N−V)`.
+
+Finally apply `filter: url(#rough)` — a `feTurbulence` + `feDisplacementMap` pair — for hand-drawn edge wobble. Jitter gives large-scale irregularity, the filter gives fine-grain wobble; both together is what sells it.
+
+### Layer 3 — river and road
+
+Not filled regions but **stroked centre-lines**, which is how cartography actually draws them. Take the ordered chain from `features`, convert cell centres to a smooth curve with **Catmull-Rom → cubic Bézier**:
+
+```
+for each segment p1→p2 with neighbours p0, p3:
+  c1 = p1 + (p2 − p0)/6
+  c2 = p2 − (p3 − p1)/6
+  emit  C c1 c2 p2
+```
+
+(endpoints duplicated). Then:
+
+- **River**: a wide pale casing stroke underneath (banks), a narrower body on top, `stroke-linecap/linejoin: round`. Width modulated slightly along its length so it widens downstream.
+- **Road**: a dark casing and a light fill — the standard road treatment — with a faint centre dash.
+
+### Layer 4 — scatter
+
+Jittered `<use href="#tree">` instances placed inside each region, count proportional to region area, positions and rotations from the seeded sampler. `CONFIG.cellTypes[*].texture` and `.density` — already in config from the last round — carry straight over: `'scatter'` types get symbols at `density`, `'plain'` types get none, `'landmark'` types get one crisp centred symbol on a pale disc.
+
+### Layer 7 — the route
+
+Drawn by `render.js` on its own `<g>` above the art, repainted every move. This **replaces the per-cell `::before`/`::after` bar construction** at [css/style.css:229-289](css/style.css#L229-L289), and in doing so fixes the corner-overlap seam that the white drop-shadow halo is currently working around.
+
+- Group the laid cells into **runs of consecutive same-technology cells** (technology is per-cell and can change mid-route).
+- Each run is a polyline through cell centres with small corner radii — a transmission line is straight between pylons with sharp angle changes, so this is right and Catmull-Rom would be wrong. Extend each run half a cell into its neighbours so runs butt seamlessly.
+- **Two passes**: every casing first, then every body. One pass would let a later casing overdraw an earlier body at a technology change.
+- Cable runs get `stroke-dasharray`, so technology is legible without relying on colour (WCAG 1.4.1).
+- Draw-on animation via `stroke-dasharray`/`stroke-dashoffset`, suppressed under `prefers-reduced-motion`.
+- A small pylon glyph at each lattice and T-pylon cell centre, and none for cable — buried is buried. This communicates technology at a glance far better than a colour does.
+
+---
+
+## 7. `config.js` changes
+
+**Removed**: the `map` array and its design-notes comment block ([js/config.js:347-387](js/config.js#L347-L387)).
+
+**Added**: a `generator` block, documented in the same house style as `cellTypes`:
+
+```js
+generator: {
+  seedLength:   6,        // characters in a shareable seed string
+  maxTries:     40,       // rerolls before falling back
+  fallbackSeed: '…',      // verified at design time, baked in
+  weights:   { farmland: …, hilly: …, rocky: …, woodland: … },
+  noise:     { scale: …, octaves: …, gain: … },
+  river:     { band: [.., ..], drift: …, bendWidth: 2 },
+  road:      { band: [.., ..], drift: … },
+  sssiCells: …,
+  townCells: …,
+  lakeCells: …
+}
+```
+
+**Kept unchanged**: `grid`, `start`, `end`, `markers`, `pieces`, `budgets`, `cellTypes` (including `texture`/`density`), `technologies`, `rules`, `legend`, `dials`, `bands`, `verdicts`, `balancedThreshold`, `precision`.
+
+**Rewritten**: the `copy` keys listed in §4.
+
+---
+
+## 8. Risks
+
+| Risk | Mitigation |
+|---|---|
+| **Generated maps are boring or unbalanced.** The biggest risk in the whole plan. | The three-way validator is the answer, and `node js/balance.js --seeds 500` proves it across the seed space before shipping. If the acceptance rate is low the *generator* gets retuned — never the validator loosened. |
+| **Validation is too slow to run at click time.** | Quantise, cap the Pareto set, measure. Budget: 20ms per validation. If it misses, precompute a pool of accepted seeds at design time and ship the pool. |
+| **Boundary tracing has edge cases** — diagonal touches, regions that wrap a hole. | Edge-cancellation is exact and handles holes via `evenodd`. Diagonal-touch ambiguity is resolved by a fixed convention (always keep regions separate at a diagonal pinch) and unit-tested against hand-built grids. |
+| **SVG filters are expensive.** `feTurbulence` over a large area can cost tens of ms. | It is drawn **once per map**, never per move. The route layer carries no filters. Measure paint time on a mid-range laptop; if `#rough` is too slow, bake the displacement into the jittered vertices and drop the filter. |
+| **Accessibility regression** during a large rewrite. | The SVG is `aria-hidden` decoration and the DOM grid is untouched in structure — the contract in §6 exists precisely to bound this. A keyboard-only walkthrough is a required verification step, not a nice-to-have. |
+| **`container-type: size` needs a definitely-sized container.** | The `minmax(0,1fr)` grid row provides one. Verified by the no-scroll assertion at both test resolutions. |
+
+---
+
+## 9. Verification
+
+Run at the end of each phase, in full at the end.
+
+**Automated**
+
+```bash
+node -e "require('./js/score.js').selfTest()"        # all checks pass, fixed test map
+node js/balance.js --seeds 500                       # acceptance rate + distribution
+node js/mapgen.js --self-test                        # dims, letters, endpoints passable,
+                                                     # river spans, no walled-off map
+```
+
+**Layout** — headless Chrome at **1280×720** and **1920×1080**, light and dark:
+
+```js
+document.documentElement.scrollHeight === document.documentElement.clientHeight
+```
+
+must hold at both. This is the objective form of "fits on a laptop screen".
+
+**Visual** — screenshots of three different seeds (are they visibly different, and do they all look plausible?), plus one mid-route shot with ~15 cells laid across mixed terrain, checking the route reads over every terrain type and the corners are clean at technology changes.
+
+**Interaction** — by hand: click-through, drag-through, drag-backwards-to-undo, and a keyboard-only run (tab to the board, arrow-key a complete route to the demand centre, reach the verdict dialog, never touching the mouse).
+
+**Preferences** — `prefers-reduced-motion: reduce` (no draw-on animation) and `forced-colors: active` (SVG hidden, cell borders and focus ring visible).
+
+**Regression** — undo, reset, the substation requirement, the wrong-end-piece warning, the stuck state, and the verdict dialog firing exactly once.
+
+**Docs** — `README.md` updated: the fixed-map picture becomes a description of the generator and its balance contract; "How the map is drawn" is rewritten for the SVG layer; the input-model section replaces the palette description. Line endings preserved (README and `config.js` are LF; `render.js` and `style.css` are CRLF).
+
+---
+
+## 10. Out of scope
+
+Isometric 2.5D, WebGL, a build step, a framework, hex grids, multiplayer, persistence, and sharing a seed by URL. Seeds *are* shareable strings, so the URL parameter is a small later addition if it is ever wanted.

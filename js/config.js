@@ -4,15 +4,15 @@
 
    THIS IS THE ONLY FILE YOU NEED TO EDIT TO REBALANCE THE GAME.
 
-   Everything tunable lives here: the map, the cost/impact numbers, the
-   technology multipliers, the scoring budgets and every word of on-screen
+   Everything tunable lives here: the map generator, the cost/impact numbers,
+   the technology multipliers, the scoring budgets and every word of on-screen
    text. No other file contains a magic number or a hard-coded string.
 
    Quick guide for non-developers
    ------------------------------
    * Numbers: change the digits. Keep the commas and colons where they are.
    * Text:    change what is inside the 'quote marks'. Keep the quote marks.
-   * Map:     see the MAP section below. It is drawn as a picture.
+   * Map:     maps are generated. See THE MAP GENERATOR below.
 
    Loaded as a plain browser script, so this file defines one global called
    CONFIG. There is no build step and no module system - the game must run
@@ -110,7 +110,7 @@ var CONFIG = {
        COMM_FLOOR   this much community harm takes the Community dial to 0
      --------------------------------------------------------------------- */
   budgets: {
-    COST_BUDGET: 60,
+    COST_BUDGET: 130,
     ENV_FLOOR: 40,
     COMM_FLOOR: 40
   },
@@ -125,6 +125,19 @@ var CONFIG = {
        commImpact   community effect, negative = harm, positive = benefit
        passable     false means the route can never enter this cell
        icon         the SVG file drawn in the cell
+       texture      how the land is DRAWN on the map, which is presentation
+                    only and never affects scoring:
+                      'plain'     a flat block of colour, no symbol at all.
+                                  Use it for ground that should read as one
+                                  continuous area - fields, roads, water.
+                      'scatter'   the symbol is sprinkled over some of the
+                                  cells, jittered, so a run of them looks
+                                  like a wood or a range of hills rather
+                                  than a row of identical tiles.
+                      'landmark'  one crisp symbol on a pale disc, centred.
+                                  Use it for single places worth finding.
+       density      'scatter' only. Roughly what share of the cells get a
+                    symbol, 0 to 1. Higher means denser cover.
        description  the plain-English line shown when the cell is inspected
      --------------------------------------------------------------------- */
   cellTypes: {
@@ -136,6 +149,7 @@ var CONFIG = {
       commImpact: 0,
       passable: true,
       icon: 'img/farmland.svg',
+      texture: 'plain',
       description: 'Open agricultural land. The easiest and cheapest ground to build across.'
     },
     road: {
@@ -146,6 +160,7 @@ var CONFIG = {
       commImpact: -2,
       passable: true,
       icon: 'img/road.svg',
+      texture: 'plain',
       description: 'A public road. Working over live traffic means closures and disruption.'
     },
     rocky: {
@@ -156,6 +171,8 @@ var CONFIG = {
       commImpact: 0,
       passable: true,
       icon: 'img/rocky.svg',
+      texture: 'scatter',
+      density: 0.75,
       description: 'Hard rock. Foundations need blasting and piling, which costs time and money.'
     },
     hilly: {
@@ -166,6 +183,8 @@ var CONFIG = {
       commImpact: 0,
       passable: true,
       icon: 'img/hilly.svg',
+      texture: 'scatter',
+      density: 0.7,
       description: 'Steep ground. Awkward access for plant and cranes, but nothing sensitive.'
     },
     woodland: {
@@ -176,6 +195,8 @@ var CONFIG = {
       commImpact: 0,
       passable: true,
       icon: 'img/woodland.svg',
+      texture: 'scatter',
+      density: 0.8,
       description: 'Established trees. A route through here means felling and a permanent cleared swathe.'
     },
     river: {
@@ -186,6 +207,7 @@ var CONFIG = {
       commImpact: 0,
       passable: true,
       icon: 'img/river.svg',
+      texture: 'plain',
       description: 'A watercourse. Long spans and tall towers are needed. Cable cannot be laid through it.'
     },
     sssi: {
@@ -196,6 +218,8 @@ var CONFIG = {
       commImpact: 0,
       passable: true,
       icon: 'img/sssi.svg',
+      texture: 'scatter',
+      density: 0.5,
       description: 'Protected habitat. Building here does serious and hard-to-reverse ecological damage.'
     },
     settlement: {
@@ -206,6 +230,8 @@ var CONFIG = {
       commImpact: -8,
       passable: true,
       icon: 'img/settlement.svg',
+      texture: 'scatter',
+      density: 0.85,
       description: 'Where people live and work. Overhead lines here draw strong and sustained objection.'
     },
     customer: {
@@ -216,6 +242,7 @@ var CONFIG = {
       commImpact: 6,
       passable: true,
       icon: 'img/customer.svg',
+      texture: 'landmark',
       description: 'A site waiting for a connection. Route through it and they get connected.'
     },
     benefit: {
@@ -226,6 +253,7 @@ var CONFIG = {
       commImpact: 4,
       passable: true,
       icon: 'img/benefit.svg',
+      texture: 'landmark',
       description: 'Land offered under a community benefit scheme. Welcomed locally, and free to cross.'
     },
     substation: {
@@ -236,6 +264,7 @@ var CONFIG = {
       commImpact: 0,
       passable: true,
       icon: 'img/substation.svg',
+      texture: 'landmark',
       description: 'A switching and transformer site. The connection must pass through one to be energised.'
     },
     water: {
@@ -246,6 +275,7 @@ var CONFIG = {
       commImpact: 0,
       passable: false,
       icon: 'img/water.svg',
+      texture: 'plain',
       description: 'A lake or reservoir. The route cannot cross it.'
     }
   },
@@ -315,40 +345,84 @@ var CONFIG = {
 
 
   /* -----------------------------------------------------------------------
-     THE MAP
-     Nine rows of eleven letters. Each letter is one cell.
+     THE MAP GENERATOR
+     Every map is built from a seed, then checked before it is shown. See
+     js/mapgen.js for the passes and js/balance.js for the checks.
+
+     The column plan is the part to understand before changing anything.
+     Eleven columns are shared out like this, and the numbers below are what
+     hold that arrangement together:
+
+        0        the generation site
+        1 - 2    the road, running the full height of the map
+        3 - 6    the designated land, a wavy band two to three cells thick
+                 sitting somewhere inside them
+        7 - 9    the river, running the full height of the map
+        9 - 10   the town, and the demand centre
+
+     The substations are not given a column of their own. They are put on
+     the first clear ground east of the designated land, wherever that turns
+     out to be once the band and the river have been drawn.
+
+     That plan is what makes the game a game. The designated land blocks the
+     direct line, so going straight is fast and ruinous. The gap at the top
+     or bottom of the designated land is the way round, and it is longer.
+     Every route crosses the river once and the road once, whatever it does.
+
+        seedLength     characters in a shareable seed, e.g. 'K3F9QZ'
+        maxTries       rerolls allowed before falling back. About three maps
+                       in four are accepted, so twenty-four rejections in a
+                       row is somewhere past astronomically unlikely - the
+                       number is here to bound the worst case, not to be hit
+        fallbackSeed   a seed checked at design time, used if all else fails.
+                       It is tied to every other number in this block: change
+                       one of them and this seed draws a different map, which
+                       may no longer be a good one. The generator self test
+                       checks it, so a stale seed fails the build rather than
+                       waiting to be noticed.
+        punishCheapOn  which dial the cheapest route must fail on: 'cost',
+                       'env', 'comm', or 'any'. See js/balance.js.
+        weights        share of the board given to each kind of rough ground.
+                       Whatever is left over is farmland, so these must add
+                       up to well under 1 or the map turns to soup.
+        noise          how the rough ground is shaped. Bigger 'scale' means
+                       smaller, choppier patches.
+        river / road   band is [first column, last column]; drift is the
+                       chance of stepping sideways at each row
+        sssi           cols is [first, last]; the band is 'span' columns wide
+                       and sits somewhere inside them. gapRows is how many
+                       rows are left clear at the top or the bottom.
+     --------------------------------------------------------------------- */
+  generator: {
+    seedLength: 6,
+    maxTries: 24,
+    fallbackSeed: '9MA7JX',
+    punishCheapOn: 'env',
+
+    weights: { rocky: 0.10, hilly: 0.18, woodland: 0.20 },
+    noise: { scale: 0.30, octaves: 3, gain: 0.55 },
+
+    river: { band: [7, 9], drift: 0.55 },
+    road: { band: [1, 2], drift: 0.45 },
+    sssi: { cols: [3, 6], span: 3, gapRows: 2 },
+    town: { cells: 6 },
+    lake: { cells: 3 },
+    rewards: { benefit: 2, customers: 2 }
+  },
+
+
+  /* -----------------------------------------------------------------------
+     THE MAP ALPHABET
+     Each letter stands for one kind of ground. The generator writes maps in
+     these letters and the scoring engine reads them back, so a new kind of
+     ground needs an entry here as well as one in cellTypes above.
 
         F  farmland          W  woodland          C  connection customer
         R  road              V  river             B  community benefit
         K  rocky ground      S  designated land   X  substation
         H  hills             T  houses/industry   ~  open water (blocked)
-
-     The generation site sits at column 0, row 4 and the demand centre at
-     column 10, row 4 (set by 'start' and 'end' above). The land under them
-     still scores normally.
-
-     Design notes, so the balance survives editing:
-       * The river fills column 7 top to bottom, so every route crosses it
-         once and no route can use cable there.
-       * Columns 3 and 4 are an impact belt. Designated land in the middle,
-         woodland above and below, a settlement gap at row 2, and clean
-         hills only at the very top and very bottom rows.
-       * Water at column 2 rows 3 and 5 squeezes the approach to the middle.
-       * Two substations, at column 6 row 4 and column 6 row 8.
      --------------------------------------------------------------------- */
-  map: [
-    /* row 0 */ 'FFHHHFFVHHF',
-    /* row 1 */ 'FHWWKFFVKWF',
-    /* row 2 */ 'FFTTTFFVFWF',
-    /* row 3 */ 'FF~SSFFVFTF',
-    /* row 4 */ 'FFFSSFXVFTF',
-    /* row 5 */ 'FF~SSFFVFTF',
-    /* row 6 */ 'FFWWWFFVFWF',
-    /* row 7 */ 'FBCWWKFVKWF',
-    /* row 8 */ 'FBCWWFXVHHF'
-  ],
 
-  // Which cell type each map letter means.
   legend: {
     'F': 'farmland',
     'R': 'road',
@@ -457,70 +531,67 @@ var CONFIG = {
     startLabel: 'Generation site',
     endLabel: 'Demand centre',
 
-    // Sidebar tabs
-    tabHome: 'Home',
-    tabInstructions: 'Instructions',
-
-    // The palette
-    piecesHeading: 'Pieces',
-    piecesHint: 'Pick your route carefully. The more pieces you use, the more it will cost.',
-    piecesLabel: 'Track pieces',
-
-    techHeading: 'Choose your technology',
-    techHint: 'Pick a technology, then place a piece. You can change technology at any point.',
-
-    dialsHeading: 'Points',
-    controlsHeading: 'Controls',
-
-    undo: 'Undo last piece',
+    // The top bar
+    newMapButton: 'New landscape',
+    tabInstructions: 'How to play',
+    undo: 'Undo',
     reset: 'Start again',
     closeButton: 'Close',
+    seedLabel: 'Landscape',
 
-    statusReady: 'Choose a piece, then drop it on the highlighted square to get going.',
-    statusArmed: '{piece} selected. Drop it on the highlighted square.',
-    statusRouting: '{n} pieces laid. Keep going to the demand centre on the right.',
+    techHeading: 'Technology',
+    techHint: 'Change it as often as you like. It applies to the next span you build, not to the ones already up.',
+
+    dialsHeading: 'Points',
+
+    statusReady: 'Click an arrow to send the first span out of the generation site.',
+    statusRouting: '{n} spans built. Keep going east to the demand centre.',
     statusComplete: 'Connection energised.',
-    statusStuck: 'The line has nowhere to go from here. Undo the last piece, or start again.',
+    statusStuck: 'The line has nowhere left to go. Undo the last span, or start again.',
     statusNotEnergised: 'You have reached the demand centre, but the route does not pass through a substation. Undo and route through one.',
-    statusWrongEndPiece: 'You have reached the demand centre, but the line does not run into it. The last piece needs an opening on the right.',
+    statusWrongEndPiece: 'You have reached the demand centre, but the line runs past it rather than into it. It has to arrive from the {side}.',
 
-    errNoPiece: 'Choose a piece from the palette first.',
-    errWrongSquare: 'That is not where the line goes next. Use the highlighted square.',
-    errPieceDoesNotFit: 'That piece does not line up. You need one that opens towards the {side}.',
-    errStartPiece: 'The line comes in from the {side}, so the first piece must open that way.',
-    errAlreadyUsed: 'The route already runs through that cell.',
+    errWrongSquare: 'The line cannot jump. Carry on from the highlighted square.',
+    errNoStraight: 'The line cannot carry straight on from here. Use one of the arrows.',
+    errPieceDoesNotFit: 'The line cannot double back on itself. Pick another direction.',
+    errStartPiece: 'The line arrives from the {side}, so it cannot set off that way.',
+    errAlreadyUsed: 'The route already runs through that square.',
     errImpassable: 'The route cannot cross open water.',
     errTechBanned: '{tech} cannot be used on {terrain}.',
     errNoRoute: 'There is nothing to undo yet.',
-    errUndoDisabled: 'Pieces cannot be removed once they are laid. Start again to change your route.',
-    errComplete: 'The connection is finished. Undo a piece or start again.',
-
-    substationReminder: 'The route must pass through a substation.',
-    substationMet: 'Substation reached.',
+    errUndoDisabled: 'Spans cannot be taken down once they are up. Start again to change your route.',
+    errComplete: 'The connection is finished. Undo a span or start again.',
 
     legendHeading: 'What the land means',
     verdictHeading: 'Verdict',
 
-    // Read out for the four compass directions, in the errors above.
+    // On the arrows, and on a square with nothing worth saying about it.
+    chevronLabel: 'Send the line to the {side}.',
+    chevronDeadLabel: 'The line cannot go this way.',
+    tipImpassable: 'Cannot be crossed',
+
+    // Read out for the four compass directions, in the messages above.
     sides: { n: 'top', e: 'right', s: 'bottom', w: 'left' },
 
     // The instructions overlay. Each string is one paragraph.
     instructionsHeading: 'How to play',
     instructions: [
-      'Lay your line starting at the generation site and finish at the demand centre.',
-      'Choose a piece from the palette, then drop it on the highlighted square. Each piece only fits if its openings line up with the line you have already laid.',
-      'Try to avoid protected land and built-up areas. Watch the three meters as you build.',
-      'The line must pass through a substation to be energised.',
-      'If you want to start again, use the Home button.',
-      'Good luck!'
+      'Draw a transmission line from the generation site on the left to the demand centre on the right. The line can only ever leave the square it is standing on, so there is only ever one square in play - the highlighted one.',
+      'Click one of the arrows on that square to send the line that way. Clicking the square itself carries straight on, and you can hold the mouse down and drag to draw a run in one go. Dragging back over the line rubs it out.',
+      'From the keyboard: arrow keys move around the map, and an arrow key pressed on the highlighted square sends the line that way. Press 1, 2 or 3 to change technology.',
+      'Choose the technology before each span. Lattice towers are cheapest and the most visible; T-pylons cost more and sit more quietly; underground cable hides the line almost entirely but is enormously expensive, and cannot be taken through a river.',
+      'Hover over any square to see what the land is and what crossing it costs. Watch the three meters as you build - a route that scores well on all three is the one that gets consent.',
+      'The line must pass through a substation to be energised, and it must arrive at the demand centre rather than run past it.',
+      'Every landscape is generated and checked before you see it, so a balanced route always exists. New landscape rolls another one.'
     ],
 
     // How each cell is described to a screen reader. The {braces} are filled
     // in by the game, so keep them exactly as they are.
     cellPosition: 'Column {col}, row {row}.',
     cellTerrain: '{terrain}. Cost {cost}, environment {env}, community {comm}.',
-    cellRouted: 'Piece {n} of the route, {piece}, carried on {tech}.',
-    cellAvailable: 'This is where the next piece goes.',
+    cellRouted: 'Span {n} of the route, {piece}, carried on {tech}.',
+    cellAvailable: 'This is where the line goes next.',
+    cellExits: 'It can leave towards the {sides}.',
     cellIsStart: 'Generation site, where the route begins.',
     cellIsEnd: 'Demand centre, where the route must finish.',
     cellIsHead: 'End of the route so far.',

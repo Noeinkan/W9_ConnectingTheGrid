@@ -83,12 +83,22 @@ var Score = (function (CFG) {
 
   /* ---------------------------------------------------------------------
      The map, turned from letters into a grid of cell type ids
+     ---------------------------------------------------------------------
+     There is no map in CONFIG any more. Maps are generated, so the one in
+     play arrives at run time and can be replaced without reloading the
+     page - which is what the "New landscape" button does.
+
+     Everything that reads the map goes through here, so installing a new
+     one is a single call and there is no second copy to fall out of step.
      ------------------------------------------------------------------- */
 
-  function buildGrid() {
-    var grid = [];
-    for (var row = 0; row < CFG.map.length; row++) {
-      var line = CFG.map[row];
+  var activeRows = [];
+  var grid = [];
+
+  function gridFrom(rows) {
+    var out = [];
+    for (var row = 0; row < rows.length; row++) {
+      var line = rows[row];
       var cells = [];
       for (var col = 0; col < line.length; col++) {
         var letter = line.charAt(col);
@@ -99,12 +109,19 @@ var Score = (function (CFG) {
         }
         cells.push(typeId);
       }
-      grid.push(cells);
+      out.push(cells);
     }
+    return out;
+  }
+
+  // Puts a map into play. Everything below reads what this last installed.
+  function setMap(rows) {
+    activeRows = rows.slice();
+    grid = gridFrom(activeRows);
     return grid;
   }
 
-  var grid = buildGrid();
+  function mapRows() { return activeRows.slice(); }
 
   function typeIdAt(col, row) {
     if (row < 0 || row >= grid.length) { return null; }
@@ -123,16 +140,24 @@ var Score = (function (CFG) {
      map by hand. Returns a list of problems; an empty list means all good.
      ------------------------------------------------------------------- */
 
-  function validateMap() {
+  function validateMap(rows) {
     var problems = [];
+    var checking = rows || activeRows;
+    var checkGrid = rows ? gridFrom(rows) : grid;
     var r, c;
 
-    if (CFG.map.length !== CFG.grid.rows) {
-      problems.push('CONFIG.map has ' + CFG.map.length + ' rows but CONFIG.grid.rows says ' + CFG.grid.rows);
+    function typeHere(col, row) {
+      if (row < 0 || row >= checkGrid.length) { return null; }
+      if (col < 0 || col >= checkGrid[row].length) { return null; }
+      return cellType(checkGrid[row][col]);
     }
-    for (r = 0; r < CFG.map.length; r++) {
-      if (CFG.map[r].length !== CFG.grid.cols) {
-        problems.push('Map row ' + r + ' has ' + CFG.map[r].length + ' cells but CONFIG.grid.cols says ' + CFG.grid.cols);
+
+    if (checking.length !== CFG.grid.rows) {
+      problems.push('The map has ' + checking.length + ' rows but CONFIG.grid.rows says ' + CFG.grid.rows);
+    }
+    for (r = 0; r < checking.length; r++) {
+      if (checking[r].length !== CFG.grid.cols) {
+        problems.push('Map row ' + r + ' has ' + checking[r].length + ' cells but CONFIG.grid.cols says ' + CFG.grid.cols);
       }
     }
 
@@ -143,7 +168,7 @@ var Score = (function (CFG) {
     ];
     for (var e = 0; e < ends.length; e++) {
       var end = ends[e];
-      var type = typeAt(end.at.col, end.at.row);
+      var type = typeHere(end.at.col, end.at.row);
       if (!type) {
         problems.push('The ' + end.name + ' is outside the map');
       } else if (!type.passable) {
@@ -179,9 +204,9 @@ var Score = (function (CFG) {
 
     if (CFG.rules.requireSubstation) {
       var found = 0;
-      for (r = 0; r < grid.length; r++) {
-        for (c = 0; c < grid[r].length; c++) {
-          if (grid[r][c] === 'substation') { found++; }
+      for (r = 0; r < checkGrid.length; r++) {
+        for (c = 0; c < checkGrid[r].length; c++) {
+          if (checkGrid[r][c] === 'substation') { found++; }
         }
       }
       if (found === 0) {
@@ -272,6 +297,21 @@ var Score = (function (CFG) {
      under Node. Returns true only if everything passed.
      ------------------------------------------------------------------- */
 
+  /* The map the tests use. Written out here on purpose: the game's own maps
+     are generated fresh every time, and a test whose inputs move underneath
+     it proves nothing. This one never changes. */
+  var TEST_MAP = [
+    'HHKRFFWWVFH',
+    'HFFRWWWVVFF',
+    'FF~RWWFVFTT',
+    'FF~RSSFVFTT',
+    'FFRRSSXVFTF',
+    'FFRSSFFVVFF',
+    'FWRFFFFFVFF',
+    'WWRBCFFFVKF',
+    'WWRBCFXFVHF'
+  ];
+
   function selfTest(log) {
     var say = log || function (line) { console.log(line); };
     var passed = 0;
@@ -302,12 +342,17 @@ var Score = (function (CFG) {
     say('=======================================');
 
     // ---- Assertion 1 ----------------------------------------------------
-    // A 14 cell all-farmland route on lattice.
+    /* A 14 cell all-farmland route on lattice. The expected cost dial is
+       written out rather than calculated, so a change to the formula is
+       caught rather than mirrored - but it does depend on the budget:
+         100 - (14 / COST_BUDGET) * 100  =  100 - (14 / 130) * 100  =  89.2
+       Change budgets.COST_BUDGET in config.js and this number moves with
+       it. Assertion 2 below is tied to ENV_FLOOR the same way. */
     say('');
     say('Assertion 1: 14 farmland cells on lattice');
     var a = scoreRoute(routeOf(repeat('farmland', 14), 'lattice'));
     check('totalCost', a.totals.cost, 14);
-    check('costDial', a.dials.cost, 76.7);
+    check('costDial', a.dials.cost, 89.2);
     check('envDial', a.dials.env, 100);
     check('commDial', a.dials.comm, 100);
 
@@ -320,19 +365,32 @@ var Score = (function (CFG) {
     check('envDial', b.dials.env, 60);
 
     // ---- Map sanity -----------------------------------------------------
+    /* Checked against a map written out here rather than whatever the
+       generator last produced. A test that changes its own inputs every
+       time it runs is not a test, and this one has to be able to fail for
+       exactly one reason: the validator stopped working. */
     say('');
-    say('Map check');
-    var problems = validateMap();
+    say('Map check, on a fixed test map');
+    var problems = validateMap(TEST_MAP);
     if (problems.length === 0) {
       passed++;
-      say('  PASS  the map in CONFIG is well formed' +
+      say('  PASS  the test map is well formed' +
           '\n          ' + CFG.grid.cols + ' x ' + CFG.grid.rows + ' = ' +
           (CFG.grid.cols * CFG.grid.rows) + ' cells');
     } else {
       failed++;
-      say('  FAIL  the map in CONFIG has problems:');
+      say('  FAIL  the test map has problems:');
       problems.forEach(function (problem) { say('          - ' + problem); });
     }
+
+    // ---- Installing a map -----------------------------------------------
+    say('');
+    say('Assertion 3: installing a map is what the board then reads');
+    var before = mapRows();
+    setMap(TEST_MAP);
+    check('typeAt reads the installed map', typeIdAt(6, 4), 'substation');
+    check('off the map reads as nothing', typeIdAt(-1, 0), null);
+    if (before.length) { setMap(before); }
 
     say('');
     say('=======================================');
@@ -349,7 +407,8 @@ var Score = (function (CFG) {
      ------------------------------------------------------------------- */
 
   return {
-    grid: grid,
+    setMap: setMap,
+    mapRows: mapRows,
     typeIdAt: typeIdAt,
     typeAt: typeAt,
     cellType: cellType,

@@ -41,20 +41,46 @@
   --brand-tech-tpylon:    #4a7c59;
   --brand-tech-cable:     #7a5195;
 
-  /* Terrain fills. Muted on purpose so the route line stays the loudest
-     thing on the board. */
-  --brand-land-farmland:   #e6e9d5;
-  --brand-land-road:       #d8d8d4;
-  --brand-land-rocky:      #cbc4b8;
-  --brand-land-hilly:      #ddd8bd;
-  --brand-land-woodland:   #b6cdaa;
-  --brand-land-river:      #b9d6e6;
-  --brand-land-sssi:       #f0d98a;
-  --brand-land-settlement: #eab9a4;
-  --brand-land-customer:   #cfc0e6;
-  --brand-land-benefit:    #bfe0d0;
-  --brand-land-substation: #c3c3cb;
-  --brand-land-water:      #7fa9c4;
+  /* Terrain fills. These are the colours of the MAP, not of the interface,
+     so they are the same in both themes - see the note on the dark block
+     below. Greens carry the open country, blues the water, and everything
+     built or protected steps away from green so it can be picked out at a
+     glance. */
+  --brand-land-farmland:   #e7edc9;
+  --brand-land-road:       #c8c6bd;
+  --brand-land-rocky:      #ccb894;
+  --brand-land-hilly:      #a8cd72;
+  --brand-land-woodland:   #6da755;
+  --brand-land-river:      #8fcdea;
+  --brand-land-sssi:       #efd583;
+  --brand-land-settlement: #e5ab90;
+  --brand-land-customer:   #d5c3ec;
+  --brand-land-benefit:    #a5ddc0;
+  --brand-land-substation: #c6c5d2;
+  --brand-land-water:      #4e97c4;
+
+  /* The drawn landscape: symbols and lines rather than areas of ground, so
+     these are darker and more saturated than the fills they sit on. */
+  --brand-art-ink:         #35402c;
+  --brand-art-canopy:      #46783c;
+  --brand-art-canopy-2:    #33602c;
+  --brand-art-trunk:       #6b5334;
+  --brand-art-hill:        #cbe3a3;
+  --brand-art-hill-2:      #7ba851;
+  --brand-art-rock:        #9a8664;
+  --brand-art-rock-2:      #b8a583;
+  --brand-art-roof:        #b4634b;
+  --brand-art-wall:        #f0e4d8;
+  --brand-art-river:       #4d9dc7;
+  --brand-art-glint:       #cbeafb;
+  --brand-art-road:        #efe7d6;
+  --brand-art-road-case:   #79725f;
+  --brand-art-relief:      rgb(46 58 34 / 0.20);
+  --brand-art-grid:        rgb(70 82 52 / 0.16);
+
+  /* Paper white for map furniture - pins, discs, casings. Deliberately a
+     literal colour, not a theme token: it must not flip in dark mode. */
+  --brand-map-paper:       #fdfdfb;
 
   /* Type */
   --brand-font: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -100,20 +126,21 @@
 
 
 /* -------------------------------------------------------------------------
-   Reset and page
+   Reset
    ---------------------------------------------------------------------- */
 *, *::before, *::after { box-sizing: border-box; }
 
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; height: 100%; }
 
 body {
+  height: 100%;
   margin: 0;
-  padding: clamp(1rem, 3vw, 2rem) clamp(0.75rem, 3vw, 2rem) 4rem;
+  overflow: hidden;         /* the app shell below fits; it never scrolls */
   background: var(--brand-surface);
   color: var(--brand-ink);
   font-family: var(--brand-font);
   font-size: 1rem;
-  line-height: 1.55;
+  line-height: 1.5;
 }
 
 h1, h2, h3 { line-height: 1.25; margin: 0; }
@@ -128,7 +155,7 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
 }
 
 /* A single, consistent focus treatment (WCAG 2.2 AA, 2.4.11 and 2.4.13). */
-:where(a, button, [tabindex]):focus-visible {
+:where(a, button, summary, [tabindex]):focus-visible {
   outline: 3px solid var(--brand-accent);
   outline-offset: 2px;
   border-radius: var(--brand-radius-sm);
@@ -136,232 +163,118 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
 
 
 /* -------------------------------------------------------------------------
-   Layout
+   The app shell
+   -------------------------------------------------------------------------
+   The map is the game, so the map gets whatever room is left once the
+   controls have had theirs - in BOTH directions, without measuring anything
+   in JavaScript.
+
+   Two things do that work, and neither is obvious.
+
+   1. min-height: 0 on every box between .app and the map. A grid or flex
+      child defaults to min-height: auto, which means it flatly refuses to
+      shrink below its own contents. One box in the chain without it and the
+      whole layout pushes past the bottom of the screen - which is exactly
+      what used to happen here.
+
+   2. Container query units for the map itself. .stage declares itself a
+      size container, so 100cqw and 100cqh are ITS width and height, not the
+      viewport's. The map then takes whichever of the two runs out first.
+      The alternative - guessing the leftover height with something like
+      calc(100dvh - 17rem) - is wrong the moment anything in the rail
+      changes size, and it was.
    ---------------------------------------------------------------------- */
-.page { max-width: 84rem; margin: 0 auto; }
-
-.masthead { margin-bottom: 1.5rem; }
-.masthead h1 { font-size: clamp(1.4rem, 4vw, 2rem); letter-spacing: -0.01em; }
-.masthead p {
-  margin: 0.35rem 0 0;
-  color: var(--brand-ink-muted);
-  max-width: 46rem;
-}
-
-/* Sidebar first on narrow screens, alongside once there is room. */
-.game-shell {
+.app {
+  height: 100dvh;
   display: grid;
-  gap: clamp(1rem, 2.5vw, 1.75rem);
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
-}
-@media (min-width: 64rem) {
-  .game-shell { grid-template-columns: 19rem minmax(0, 1fr); }
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
-.sidebar { display: grid; gap: 0.75rem; }
-.board-area { display: grid; gap: 0.75rem; min-width: 0; }
-
-.board-foot {
+.app-main {
   display: grid;
+  grid-template-columns: 17rem minmax(0, 1fr);
+  gap: 0.7rem;
+  min-height: 0;
+  padding: 0 0.7rem;
+}
+
+.rail {
+  display: grid;
+  gap: 0.55rem;
+  align-content: start;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.stage {
+  display: grid;
+  place-items: center;
+  min-height: 0;
+  min-width: 0;
+  container-type: size;
+}
+
+.board-wrap {
+  position: relative;
+  aspect-ratio: var(--cols, 11) / var(--rows, 9);
+  width: min(100cqw, calc(100cqh * var(--cols, 11) / var(--rows, 9)));
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.2), 0 12px 34px rgb(0 0 0 / 0.18);
+}
+
+
+/* -------------------------------------------------------------------------
+   The top bar
+   ---------------------------------------------------------------------- */
+.topbar {
+  display: flex;
+  align-items: center;
   gap: 0.75rem;
-  grid-template-columns: minmax(0, 1fr);
+  flex-wrap: wrap;
+  padding: 0.55rem 0.75rem;
 }
-@media (min-width: 44rem) {
-  .board-foot { grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); }
+.topbar h1 {
+  font-size: clamp(1rem, 2.2vw, 1.3rem);
+  letter-spacing: -0.01em;
+  margin-right: auto;
 }
+.topbar-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 
+
+/* -------------------------------------------------------------------------
+   Panels
+   ---------------------------------------------------------------------- */
 .panel {
   background: var(--brand-surface-raised);
   border: 1px solid var(--brand-line);
   border-radius: var(--brand-radius);
-  padding: clamp(0.85rem, 2vw, 1.15rem);
+  padding: 0.7rem 0.75rem;
 }
-.panel h2 {
-  font-size: 0.8rem;
+.panel h2, .legend-drawer summary {
+  font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   color: var(--brand-ink-muted);
-  margin-bottom: 0.7rem;
+  font-weight: 700;
+  margin-bottom: 0.55rem;
 }
 
 .hint {
-  margin: 0.7rem 0 0;
+  margin: 0.55rem 0 0;
   color: var(--brand-ink-muted);
-  font-size: 0.78rem;
+  font-size: 0.74rem;
 }
 
-
-/* -------------------------------------------------------------------------
-   Tabs
-   ---------------------------------------------------------------------- */
-.tabs { display: flex; gap: 0.35rem; }
-
-.tab {
-  flex: 1 1 auto;
-  min-height: 2.75rem;
-  padding: 0.5rem 0.8rem;
-  font: inherit;
-  font-size: 0.85rem;
-  font-weight: 600;
+.seed-line {
+  margin: 0;
+  padding: 0 0.2rem;
+  font-size: 0.7rem;
+  color: var(--brand-ink-muted);
+}
+.seed-line code {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
   color: var(--brand-ink);
-  background: var(--brand-surface-raised);
-  border: 1px solid var(--brand-line);
-  border-radius: var(--brand-radius) var(--brand-radius) 0 0;
-  cursor: pointer;
-}
-.tab:hover { background: var(--brand-accent-soft); }
-.tab-home { background: var(--brand-accent); color: var(--brand-accent-ink); border-color: var(--brand-accent); }
-.tab-home:hover { filter: brightness(1.12); background: var(--brand-accent); }
-
-
-/* -------------------------------------------------------------------------
-   The route, drawn in CSS
-   -------------------------------------------------------------------------
-   Deliberately NOT scoped to .cell. The same three rules draw a laid piece
-   on the board and the little picture on a palette tile, so there is exactly
-   one place where a piece's shape is defined and no track images to keep in
-   step with CONFIG.pieces.
-
-   An element carrying .is-route draws up to two bars, from its centre out to
-   whichever sides it opens on. ::before is the vertical run and ::after the
-   horizontal one, so a corner is simply half of each.
-   ---------------------------------------------------------------------- */
-.is-route { --wire: 30%; --tech: var(--brand-tech-lattice); position: relative; }
-
-.tech-lattice { --tech: var(--brand-tech-lattice); }
-.tech-tpylon  { --tech: var(--brand-tech-tpylon); }
-.tech-cable   { --tech: var(--brand-tech-cable); }
-
-.is-route::before,
-.is-route::after {
-  content: "";
-  position: absolute;
-  background: var(--tech);
-  border-radius: 2px;
-  z-index: 1;
-}
-/* vertical run: nothing by default, extended by conn-n / conn-s */
-.is-route::before {
-  left: 50%; width: var(--wire); transform: translateX(-50%);
-  top: 50%; bottom: 50%;
-}
-.is-route.conn-n::before { top: -1px; }
-.is-route.conn-s::before { bottom: -1px; }
-
-/* horizontal run */
-.is-route::after {
-  top: 50%; height: var(--wire); transform: translateY(-50%);
-  left: 50%; right: 50%;
-}
-.is-route.conn-w::after { left: -1px; }
-.is-route.conn-e::after { right: -1px; }
-
-/* Underground cable is drawn as a dotted run, so technology is not
-   signalled by colour alone. */
-.is-route.tech-cable::before,
-.is-route.tech-cable::after {
-  background-image: repeating-linear-gradient(
-    var(--angle, 0deg),
-    var(--tech) 0 4px,
-    transparent 4px 8px);
-  background-color: transparent;
-}
-.is-route.tech-cable::before { --angle: 180deg; }
-.is-route.tech-cable::after  { --angle: 90deg; }
-
-
-/* -------------------------------------------------------------------------
-   The palette
-   ---------------------------------------------------------------------- */
-.palette {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.5rem;
-}
-
-.piece {
-  position: relative;
-  aspect-ratio: 1;
-  min-height: 2.75rem;
-  padding: 0.3rem;
-  background: var(--brand-surface-raised);
-  border: 2px solid var(--brand-line);
-  border-radius: var(--brand-radius-sm);
-  cursor: grab;
-}
-.piece:hover { border-color: var(--brand-accent); }
-.piece:active { cursor: grabbing; }
-
-/* The track picture inside the tile. Inherits --tech from the tile. */
-.piece-art { position: absolute; inset: 0.3rem; }
-
-/* Armed: this is the piece that the next click on the board will place. */
-.piece.is-armed {
-  border-color: var(--brand-accent);
-  background: var(--brand-accent-soft);
-  box-shadow: inset 0 0 0 2px var(--brand-accent);
-}
-
-/* A piece that will not fit the next square. Dimmed AND hatched, so it does
-   not rely on colour alone (WCAG 2.2 AA, 1.4.1). It stays clickable: asking
-   for it is how you get told why it does not fit. */
-.piece.is-unusable { opacity: 0.4; cursor: not-allowed; }
-.piece.is-unusable::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    45deg,
-    transparent 0 5px,
-    var(--brand-ink-muted) 5px 6px);
-  opacity: 0.5;
-  pointer-events: none;
-}
-
-
-/* -------------------------------------------------------------------------
-   The technology picker
-   ---------------------------------------------------------------------- */
-.tech-picker { display: grid; gap: 0.4rem; }
-
-.tech {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-areas: "swatch label" "swatch summary";
-  align-items: center;
-  gap: 0 0.6rem;
-  min-height: 2.75rem;
-  padding: 0.45rem 0.6rem;
-  text-align: left;
-  font: inherit;
-  color: var(--brand-ink);
-  background: var(--brand-surface-raised);
-  border: 2px solid var(--brand-line);
-  border-radius: var(--brand-radius-sm);
-  cursor: pointer;
-}
-.tech:hover { border-color: var(--brand-accent); }
-
-.tech-swatch {
-  grid-area: swatch;
-  width: 1.1rem; height: 1.1rem;
-  border-radius: 50%;
-  background: var(--tech);
-}
-.tech-label   { grid-area: label; font-size: 0.85rem; font-weight: 600; }
-.tech-summary { grid-area: summary; font-size: 0.72rem; color: var(--brand-ink-muted); }
-
-/* The chosen technology. Marked by a tick as well as a border, so the state
-   is not carried by colour alone. */
-.tech.is-chosen {
-  border-color: var(--brand-accent);
-  background: var(--brand-accent-soft);
-}
-.tech.is-chosen .tech-label::after {
-  content: " \2713";
-  color: var(--brand-accent);
-  font-weight: 700;
 }
 
 
@@ -372,16 +285,27 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
    The marker's POSITION carries the value; the colour bands only reinforce
    it, and the tick marks show where the bands change without needing colour.
    ---------------------------------------------------------------------- */
-.meters { display: grid; gap: 0.6rem; }
+.meters { display: grid; gap: 0.55rem; }
 
-.meter { display: grid; gap: 0.25rem; }
+.meter {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: baseline;
+  gap: 0 0.5rem;
+}
 
-.meter-label { font-size: 0.8rem; font-weight: 600; }
+.meter-label { font-size: 0.78rem; font-weight: 600; }
+.meter-value {
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-ink-muted);
+}
 
 .meter-bar {
+  grid-column: 1 / -1;
   position: relative;
-  height: 0.85rem;
-  margin-top: 0.55rem;   /* room for the marker sitting above the bar */
+  height: 0.7rem;
+  margin-top: 0.5rem;   /* room for the marker sitting above the bar */
   border: 1px solid var(--brand-line);
   border-radius: var(--brand-radius-sm);
   background: linear-gradient(to right,
@@ -402,125 +326,406 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
 
 .meter-marker {
   position: absolute;
-  top: -0.5rem;
+  top: -0.45rem;
   left: 0;
   width: 0; height: 0;
   transform: translateX(-50%);
-  border-left: 0.4rem solid transparent;
-  border-right: 0.4rem solid transparent;
-  border-top: 0.5rem solid var(--brand-ink);
+  border-left: 0.35rem solid transparent;
+  border-right: 0.35rem solid transparent;
+  border-top: 0.45rem solid var(--brand-ink);
   transition: left 180ms ease;
 }
 
 
 /* -------------------------------------------------------------------------
-   The board
+   The technology picker
+   -------------------------------------------------------------------------
+   One segmented control rather than three stacked cards. The same
+   information in about a third of the height - and the height is what was
+   pushing the map off the bottom of the screen.
    ---------------------------------------------------------------------- */
-.board-wrap { padding: clamp(0.4rem, 1.5vw, 0.75rem); }
+.tech-picker {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 0.25rem;
+  padding: 0.2rem;
+  background: var(--brand-surface-sunk);
+  border-radius: var(--brand-radius-sm);
+}
+
+.tech {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 0.15rem;
+  min-height: 2.75rem;          /* past the 24px target minimum, 2.5.8 */
+  padding: 0.35rem 0.2rem;
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--brand-ink);
+  background: none;
+  border: 2px solid transparent;
+  border-radius: var(--brand-radius-sm);
+  cursor: pointer;
+}
+.tech:hover { background: var(--brand-surface-raised); }
+
+.tech-swatch {
+  width: 1.4rem; height: 0.3rem;
+  border-radius: 999px;
+  background: var(--tech);
+}
+.tech-lattice { --tech: var(--brand-tech-lattice); }
+.tech-tpylon  { --tech: var(--brand-tech-tpylon); }
+.tech-cable   { --tech: var(--brand-tech-cable); }
+
+/* Underground cable is dashed everywhere it appears, so the three
+   technologies are never told apart by colour alone (WCAG 2.2 AA, 1.4.1). */
+.tech-cable .tech-swatch {
+  background: repeating-linear-gradient(to right,
+    var(--tech) 0 4px, transparent 4px 7px);
+}
+
+.tech-key { font-size: 0.64rem; color: var(--brand-ink-muted); font-weight: 400; }
+
+/* The chosen technology, marked by a tick as well as a fill so the state is
+   not carried by colour alone. */
+.tech.is-chosen {
+  background: var(--brand-surface-raised);
+  border-color: var(--brand-accent);
+}
+.tech.is-chosen .tech-name::after {
+  content: " \2713";
+  color: var(--brand-accent);
+}
+
+
+/* -------------------------------------------------------------------------
+   The map
+   -------------------------------------------------------------------------
+   Three layers in one square, all exactly the same size:
+
+     .art-layer   the drawn landscape - one SVG, decoration only
+     .board       the real grid of buttons, transparent, over it
+     .chevrons    the arrows showing where the line can go next
+
+   The SVG carries all of the beauty and none of the meaning. Every bit of
+   behaviour - focus, labels, keyboard, forced colours - belongs to the
+   buttons, which is what let the picture be rewritten without touching any
+   of it. See the note at the top of js/mapart.js.
+   ---------------------------------------------------------------------- */
+.art-layer, .board, .chevrons {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.art-layer { overflow: hidden; pointer-events: none; }
+.art { display: block; width: 100%; height: 100%; }
 
 .board {
   display: grid;
-  gap: 2px;
-  /* Column count is set inline from CONFIG.grid.cols so the map stays
-     editable from config.js alone. */
+  grid-template-columns: repeat(var(--cols, 11), minmax(0, 1fr));
+  grid-template-rows: repeat(var(--rows, 9), minmax(0, 1fr));
+  touch-action: none;      /* dragging across the map must not scroll the page */
 }
-
 .board-row { display: contents; }
 
 .cell {
-  /* Layout */
   position: relative;
-  aspect-ratio: 1;
   min-width: 0;
+  min-height: 0;
   padding: 0;
   border: 0;
-  border-radius: var(--brand-radius-sm);
-  /* Paint */
-  background: var(--brand-land-farmland);
+  border-radius: 0;
+  background: transparent;
   color: inherit;
   cursor: pointer;
-  /* The terrain icon */
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: 66%;
-  transition: transform 120ms ease, box-shadow 120ms ease;
+  -webkit-appearance: none;
+  appearance: none;
 }
-
 .cell[aria-disabled="true"] { cursor: default; }
+.cell:hover { box-shadow: inset 0 0 0 2px rgb(255 255 255 / 0.6); }
 
-/* Terrain fills and icons. One rule per cell type in CONFIG.cellTypes. */
-.t-farmland   { background-color: var(--brand-land-farmland);   background-image: url("../img/farmland.svg"); }
-.t-road       { background-color: var(--brand-land-road);       background-image: url("../img/road.svg"); }
-.t-rocky      { background-color: var(--brand-land-rocky);      background-image: url("../img/rocky.svg"); }
-.t-hilly      { background-color: var(--brand-land-hilly);      background-image: url("../img/hilly.svg"); }
-.t-woodland   { background-color: var(--brand-land-woodland);   background-image: url("../img/woodland.svg"); }
-.t-river      { background-color: var(--brand-land-river);      background-image: url("../img/river.svg"); }
-.t-sssi       { background-color: var(--brand-land-sssi);       background-image: url("../img/sssi.svg"); }
-.t-settlement { background-color: var(--brand-land-settlement); background-image: url("../img/settlement.svg"); }
-.t-customer   { background-color: var(--brand-land-customer);   background-image: url("../img/customer.svg"); }
-.t-benefit    { background-color: var(--brand-land-benefit);    background-image: url("../img/benefit.svg"); }
-.t-substation { background-color: var(--brand-land-substation); background-image: url("../img/substation.svg"); }
-.t-water      { background-color: var(--brand-land-water);      background-image: url("../img/water.svg"); cursor: not-allowed; }
-
-/* The one square the next piece goes on. There is never more than one, so it
-   can afford to be loud. */
+/* The one square the next piece goes on. There is never more than one, so
+   it can afford to be loud. */
 .cell.is-target {
   box-shadow: inset 0 0 0 3px var(--brand-accent);
   animation: target-pulse 1.8s ease-in-out infinite;
   z-index: 2;
+  cursor: pointer;
 }
-.cell.is-target:hover { transform: scale(1.06); }
-.cell.is-dragover { transform: scale(1.1); box-shadow: inset 0 0 0 4px var(--brand-accent); }
-
 @keyframes target-pulse {
   0%, 100% { box-shadow: inset 0 0 0 3px var(--brand-accent); }
-  50%      { box-shadow: inset 0 0 0 3px var(--brand-accent), 0 0 0 3px var(--brand-accent-soft); }
+  50%      { box-shadow: inset 0 0 0 3px var(--brand-accent), inset 0 0 0 6px rgb(255 255 255 / 0.55); }
 }
-
-/* The generation site and demand centre badges. */
-.cell.is-start, .cell.is-end {
-  background-size: 62%;
-  box-shadow: inset 0 0 0 3px var(--brand-ink);
-}
-.cell.is-start { background-image: url("../img/marker-generation.svg"); }
-.cell.is-end   { background-image: url("../img/marker-demand.svg"); }
-
-/* A laid piece hides the marker badge underneath it. */
-.cell.is-route.is-start, .cell.is-route.is-end { background-image: none; }
 
 /* The working end of the route. Deliberately quieter than .is-target: the
-   pulsing accent ring has to mean "the next piece goes here" and nothing
-   else, or the two squares read as the same invitation. */
-.cell.is-head { box-shadow: inset 0 0 0 2px var(--brand-ink-muted); }
+   pulsing ring has to mean "the next piece goes here" and nothing else. */
+.cell.is-head { box-shadow: inset 0 0 0 2px rgb(255 255 255 / 0.8); }
+
+.cell:focus-visible { z-index: 4; }
+
+/* The pins naming the two ends. Hidden from screen readers, because the
+   square's own label already says the same thing. */
+.cell-flag {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 15px);
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 0.1rem 0.45rem;
+  white-space: nowrap;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.6;
+  color: #1d1d20;
+  background: var(--brand-map-paper);
+  border-radius: 999px;
+  box-shadow: 0 2px 7px rgb(0 0 0 / 0.3);
+  pointer-events: none;
+}
+.cell-flag::after {          /* the little tail, pointing at the square */
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--brand-map-paper);
+}
+/* The top row has nothing above it to hang from, so its pin drops below. */
+.cell-flag[data-below] { bottom: auto; top: calc(100% + 15px); }
+.cell-flag[data-below]::after {
+  top: auto; bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: var(--brand-map-paper);
+}
 
 
 /* -------------------------------------------------------------------------
-   Status and controls
+   The landscape, drawn
+   -------------------------------------------------------------------------
+   Colours live here rather than in js/mapart.js, so the map is styled from
+   the same tokens as everything else and a rebrand never means editing
+   JavaScript.
    ---------------------------------------------------------------------- */
-.status {
-  min-height: 2.6rem;
-  margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.85rem;
-  border-radius: var(--brand-radius);
+.art-base  { fill: var(--brand-land-farmland); }
+.art-grain  { fill: #000; opacity: 0.05; mix-blend-mode: multiply; }
+/* A coarser variation over the whole sheet, so a wide stretch of open
+   farmland reads as fields rather than as an empty rectangle. */
+.art-mottle { fill: #4a5c2a; opacity: 0.2; mix-blend-mode: multiply; }
+
+.art-region     { stroke: none; }
+.art-woodland   { fill: var(--brand-land-woodland); }
+.art-hilly      { fill: var(--brand-land-hilly); }
+.art-rocky      { fill: var(--brand-land-rocky); }
+.art-sssi       { fill: var(--brand-land-sssi); }
+.art-settlement { fill: var(--brand-land-settlement); }
+.art-river      { fill: var(--brand-land-river); }
+.art-water      { fill: var(--brand-land-water); }
+
+/* Raised ground gets a shadow to the south east. It is the one thing that
+   makes a hill read as standing up rather than lying flat. */
+.art-shade { fill: var(--brand-art-relief); }
+
+/* Where the route must not go, and where it cannot. Hatched as well as
+   coloured, because neither may be carried by colour alone (WCAG 1.4.1). */
+.art-hatch-sssi  { stroke: rgb(120 88 0 / 0.16); stroke-width: 2.5; }
+.art-hatch-water { stroke: rgb(255 255 255 / 0.26); stroke-width: 2.5; }
+
+.art-river-deep  { stroke: var(--brand-art-river); stroke-width: 26; stroke-linecap: round; stroke-linejoin: round; opacity: 0.6; }
+.art-river-glint { stroke: var(--brand-art-glint); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; opacity: 0.65; }
+.art-road-case   { stroke: var(--brand-art-road-case); stroke-width: 25; stroke-linecap: round; stroke-linejoin: round; }
+.art-road-top    { stroke: var(--brand-art-road); stroke-width: 17; stroke-linecap: round; stroke-linejoin: round; }
+.art-road-dash   { stroke: var(--brand-art-road-case); stroke-width: 2.4; stroke-dasharray: 13 11; stroke-linecap: butt; opacity: 0.75; }
+
+.art-canopy    { fill: var(--brand-art-canopy); }
+.art-trunk     { fill: var(--brand-art-trunk); }
+.art-hill      { fill: var(--brand-art-hill); stroke: rgb(50 70 30 / 0.30); stroke-width: 3.5; }
+.art-hill-back { fill: var(--brand-art-hill-2); }
+.art-hill-cap  { fill: var(--brand-map-paper); opacity: 0.5; }
+.art-rock      { fill: var(--brand-art-rock); stroke: rgb(60 48 30 / 0.25); stroke-width: 3; }
+.art-rock-face { fill: var(--brand-art-rock-2); }
+.art-stem      { stroke: var(--brand-art-canopy-2); stroke-width: 5; stroke-linecap: round; }
+.art-frond     { fill: var(--brand-art-canopy-2); }
+.art-wall      { fill: var(--brand-art-wall); }
+.art-roof      { fill: var(--brand-art-roof); }
+.art-door      { fill: var(--brand-art-trunk); }
+
+/* Each landmark keeps its own ring colour, so the three read apart at a
+   glance and still read apart with the shape alone if colour is gone. */
+.art-disc            { fill: var(--brand-map-paper); stroke: rgb(44 44 40 / 0.7); stroke-width: 4; }
+.art-disc-substation { stroke: #4a4a58; }
+.art-disc-customer   { stroke: #6b4f9e; }
+.art-disc-benefit    { stroke: #2c7a52; }
+.art-mark      { fill: var(--brand-art-ink); }
+.art-mark-hot  { fill: var(--brand-warning); }
+.art-mark-vein { stroke: var(--brand-map-paper); stroke-width: 5; stroke-linecap: round; }
+
+.art-cover { opacity: 0.96; }
+.art-grid line { stroke: var(--brand-art-grid); stroke-width: 1.5; }
+
+
+/* -------------------------------------------------------------------------
+   The route, drawn over the landscape
+   -------------------------------------------------------------------------
+   One path per run of cells on the same technology, rather than one bar per
+   cell. Corners come out as corners instead of as two overlapping
+   rectangles, which is what the old drawing needed a white glow to hide.
+
+   Every casing is drawn before every body, so a run that changes technology
+   cannot have its neighbour's casing painted over the top of it.
+   ---------------------------------------------------------------------- */
+.art-route .run-case {
+  fill: none;
+  stroke: var(--brand-map-paper);
+  stroke-width: 30;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.85;
+}
+.art-route .run-body {
+  fill: none;
+  stroke-width: 16;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.art-route .run-lattice { stroke: var(--brand-tech-lattice); }
+.art-route .run-tpylon  { stroke: var(--brand-tech-tpylon); }
+.art-route .run-cable   { stroke: var(--brand-tech-cable); }
+
+/* Buried, so it is drawn as a dotted run and carries no towers. */
+.art-route .run-body.run-cable { stroke-dasharray: 22 16; }
+
+/* A tower at every cell the line is carried above ground on. This says
+   which technology is in use far better than a colour does. */
+.art-tower         { stroke: var(--brand-map-paper); stroke-width: 4; }
+.art-tower-lattice { fill: var(--brand-tech-lattice); }
+.art-tower-tpylon  { fill: var(--brand-tech-tpylon); }
+
+.art-head {
+  fill: none;
+  stroke: var(--brand-map-paper);
+  stroke-width: 6;
+  animation: head-pop 420ms ease-out;
+}
+@keyframes head-pop {
+  from { stroke-width: 2; opacity: 0.15; }
+  to   { stroke-width: 6; opacity: 1; }
+}
+
+
+/* -------------------------------------------------------------------------
+   The arrows
+   -------------------------------------------------------------------------
+   Where the line can go from the highlighted square. There are never more
+   than three, because a piece has two open ends and one of them is already
+   spoken for by the line coming in.
+
+   They are hidden from screen readers and kept out of the tab order, which
+   is deliberate rather than an oversight. The keyboard path is the arrow
+   keys on the grid itself: standard, complete, and already there. Three
+   more buttons saying the same thing would be noise to anyone listening.
+   ---------------------------------------------------------------------- */
+.chevrons { pointer-events: none; z-index: 3; }
+
+.chevron {
+  position: absolute;
+  left: calc(var(--cx, 0) * 100% / var(--cols, 11));
+  top: calc(var(--cy, 0) * 100% / var(--rows, 9));
+  width: calc(100% / var(--cols, 11) * 0.46);
+  height: calc(100% / var(--rows, 9) * 0.46);
+  min-width: 1.3rem;
+  min-height: 1.3rem;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  pointer-events: auto;
+  cursor: pointer;
+  color: var(--brand-accent-ink);
+  background: var(--brand-accent);
+  border: 2px solid var(--brand-map-paper);
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 0.35);
+}
+.chevron svg { width: 60%; height: 60%; fill: currentColor; transform: rotate(var(--rot, 0deg)); }
+.chevron:hover { filter: brightness(1.18); }
+
+/* An arrow pointing somewhere the line cannot actually go - off the map,
+   into water, or back over itself. Shown rather than hidden, because "there
+   is no way out on that side" is worth knowing. */
+.chevron.is-dead {
+  background: var(--brand-surface-sunk);
+  color: var(--brand-ink-muted);
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+
+/* -------------------------------------------------------------------------
+   The land tooltip
+   -------------------------------------------------------------------------
+   The legend answers "what do all these colours mean". This answers "what
+   is THIS", which is the question players actually ask, at the moment they
+   ask it. Hidden from screen readers: the cell's own label already carries
+   the same words.
+   ---------------------------------------------------------------------- */
+.tip {
+  position: absolute;
+  left: calc(var(--cx, 0) * 100% / var(--cols, 11));
+  top: calc(var(--cy, 0) * 100% / var(--rows, 9));
+  z-index: 6;
+  width: max-content;
+  max-width: 14rem;
+  padding: 0.4rem 0.55rem;
+  transform: translate(-50%, -118%);
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: var(--brand-ink);
   background: var(--brand-surface-raised);
   border: 1px solid var(--brand-line);
-  font-size: 0.92rem;
+  border-radius: var(--brand-radius-sm);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.25);
+  pointer-events: none;
+}
+.tip[hidden] { display: none; }
+/* Near the top of the map there is no room above, so it drops below. */
+.tip[data-below] { transform: translate(-50%, 18%); }
+.tip strong { display: block; font-size: 0.78rem; }
+.tip .tip-nums {
+  display: block;
+  margin-top: 0.15rem;
+  color: var(--brand-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+
+/* -------------------------------------------------------------------------
+   Status and buttons
+   ---------------------------------------------------------------------- */
+.status {
+  display: flex;
+  align-items: center;
+  min-height: 2.4rem;
+  margin: 0;
+  padding: 0.4rem 1rem;
+  font-size: 0.88rem;
+  color: var(--brand-ink-muted);
 }
 .status[data-tone="error"]   { color: var(--brand-negative); font-weight: 600; }
 .status[data-tone="warning"] { color: var(--brand-warning); font-weight: 600; }
 .status[data-tone="success"] { color: var(--brand-positive); font-weight: 600; }
 
-.controls { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-
 .btn {
-  flex: 1 1 auto;
-  min-height: 2.75rem;   /* comfortably past the 24px target minimum, 2.5.8 */
-  padding: 0.55rem 0.9rem;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.75rem;
   font: inherit;
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   font-weight: 600;
   color: var(--brand-ink);
   background: var(--brand-surface-raised);
@@ -531,6 +736,8 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
 .btn:hover:not(:disabled) { background: var(--brand-accent-soft); }
 .btn:disabled { opacity: 0.45; cursor: default; }
 .btn[hidden] { display: none; }
+.btn-quiet { background: none; border-color: transparent; color: var(--brand-ink-muted); }
+.btn-quiet:hover:not(:disabled) { background: var(--brand-surface-raised); color: var(--brand-ink); }
 
 
 /* -------------------------------------------------------------------------
@@ -550,6 +757,12 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
 .sheet p { margin: 0 0 0.7rem; }
 .sheet form { margin-top: 1rem; display: flex; }
 
+.sheet-lead {
+  font-size: 0.95rem;
+  color: var(--brand-ink-muted);
+  margin-bottom: 0.9rem;
+}
+
 .sheet-eyebrow {
   font-size: 0.75rem;
   text-transform: uppercase;
@@ -561,13 +774,23 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
 
 /* -------------------------------------------------------------------------
    Legend
+   -------------------------------------------------------------------------
+   Closed by default. The tooltip on the map answers the same question in
+   the place it gets asked, so this is the reference copy rather than the
+   thing anyone reads first - and it is no longer worth the vertical space
+   it used to take.
    ---------------------------------------------------------------------- */
-.legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.3rem; }
-.legend li { display: flex; align-items: center; gap: 0.55rem; font-size: 0.82rem; }
+.legend-drawer summary { cursor: pointer; }
+.legend-drawer[open] summary { margin-bottom: 0.5rem; }
+
+.legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; }
+.legend li { display: flex; align-items: center; gap: 0.5rem; font-size: 0.74rem; }
 .legend .swatch {
   flex: none;
-  width: 1.55rem; height: 1.55rem;
+  width: 1.3rem; height: 1.3rem;
   border-radius: var(--brand-radius-sm);
+  background-color: var(--land, var(--brand-land-farmland));
+  background-image: var(--icon, none);
   background-repeat: no-repeat;
   background-position: center;
   background-size: 74%;
@@ -576,27 +799,81 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
 .legend .swatch-nums {
   color: var(--brand-ink-muted);
   font-variant-numeric: tabular-nums;
-  font-size: 0.76rem;
+  font-size: 0.7rem;
   white-space: nowrap;   /* keeps "1 / 0 / -8" on one line */
 }
 
 .legend-note {
-  margin: 0.6rem 0 0;
+  margin: 0.5rem 0 0;
   color: var(--brand-ink-muted);
-  font-size: 0.76rem;
+  font-size: 0.7rem;
+}
+
+/* One rule per cell type in CONFIG.cellTypes. Only the legend uses these
+   now - the map itself is drawn in SVG - so they set nothing but the two
+   variables the swatch reads. */
+.t-farmland   { --land: var(--brand-land-farmland);   --icon: url("../img/farmland.svg"); }
+.t-road       { --land: var(--brand-land-road);       --icon: url("../img/road.svg"); }
+.t-rocky      { --land: var(--brand-land-rocky);      --icon: url("../img/rocky.svg"); }
+.t-hilly      { --land: var(--brand-land-hilly);      --icon: url("../img/hilly.svg"); }
+.t-woodland   { --land: var(--brand-land-woodland);   --icon: url("../img/woodland.svg"); }
+.t-river      { --land: var(--brand-land-river);      --icon: url("../img/river.svg"); }
+.t-sssi       { --land: var(--brand-land-sssi);       --icon: url("../img/sssi.svg"); }
+.t-settlement { --land: var(--brand-land-settlement); --icon: url("../img/settlement.svg"); }
+.t-customer   { --land: var(--brand-land-customer);   --icon: url("../img/customer.svg"); }
+.t-benefit    { --land: var(--brand-land-benefit);    --icon: url("../img/benefit.svg"); }
+.t-substation { --land: var(--brand-land-substation); --icon: url("../img/substation.svg"); }
+.t-water      { --land: var(--brand-land-water);      --icon: url("../img/water.svg"); }
+
+
+/* -------------------------------------------------------------------------
+   Tablets: the rail goes under the map
+   -------------------------------------------------------------------------
+   Still one screen, still no scrolling. Only the arrangement changes.
+   ---------------------------------------------------------------------- */
+@media (max-width: 64rem) {
+  .app-main {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+  /* Placed explicitly. The rail comes first in the markup - it is the
+     controls, and they should be reached first - so left to source order it
+     would land in the row that stretches and squeeze the map to nothing. */
+  .stage { grid-row: 1; }
+  .rail {
+    grid-row: 2;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(11rem, 1fr);
+    align-content: start;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .legend-drawer, .seed-line { display: none; }
+  .topbar h1 { font-size: 1rem; }
 }
 
 
 /* -------------------------------------------------------------------------
-   Narrow screens, down to 390px
+   Phones: let the page scroll
+   -------------------------------------------------------------------------
+   Below about 40rem there is genuinely not room for a map and its controls
+   at the same time, and pretending otherwise makes both unusable. So the
+   fixed shell is abandoned here rather than squeezed.
    ---------------------------------------------------------------------- */
 @media (max-width: 40rem) {
-  body { padding-left: 0.6rem; padding-right: 0.6rem; }
-  .board { gap: 1px; }
-  .cell { border-radius: 2px; background-size: 72%; }
-  .board-wrap { padding: 0.35rem; }
-  .legend li { font-size: 0.78rem; }
-  .palette { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  body { overflow: auto; }
+  .app { height: auto; min-height: 100dvh; }
+  .app-main { grid-template-rows: auto auto; padding: 0 0.5rem; }
+  .stage { container-type: inline-size; }
+  /* Held in from the edges so the two pins have somewhere to hang. They are
+     wider than the squares they name, and on a wide screen the slack around
+     the map absorbs that; here there is none, and a pin overhanging the
+     right edge gives the whole page a horizontal scrollbar. */
+  .board-wrap { width: calc(100% - 4rem); margin-inline: auto; }
+  .rail { grid-auto-flow: row; overflow: visible; }
+  .topbar { padding: 0.5rem; }
+  .topbar h1 { width: 100%; margin-right: 0; }
+  .cell-flag { font-size: 0.55rem; padding: 0.05rem 0.3rem; }
 }
 
 
@@ -604,17 +881,26 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
    Motion and contrast preferences
    ---------------------------------------------------------------------- */
 @media (prefers-reduced-motion: reduce) {
-  * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
-  .cell.is-target:hover, .cell.is-dragover { transform: none; }
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
   .cell.is-target { animation: none; }
 }
 
 @media (forced-colors: active) {
+  /* The drawn landscape carries no meaning that is not also in every cell's
+     label, and in forced colours it would be a wash of system colours with
+     no terrain left in it. So it goes, and the buttons draw their own edges
+     again - which is what they did before there was a picture. */
+  .art-layer { display: none; }
+  .board-wrap { border: 1px solid CanvasText; }
   .cell { border: 1px solid CanvasText; }
-  .is-route::before, .is-route::after { background: Highlight; }
-  .cell.is-target { outline: 3px solid Highlight; }
-  .piece.is-armed { outline: 3px solid Highlight; }
-  .piece.is-unusable { opacity: 1; }
+  .cell.is-target { outline: 3px solid Highlight; outline-offset: -3px; }
+  .cell-flag { border: 1px solid CanvasText; box-shadow: none; }
+  .chevron { border: 1px solid CanvasText; forced-color-adjust: none; }
+  .tech.is-chosen { outline: 2px solid Highlight; }
   .meter-bar { border: 1px solid CanvasText; forced-color-adjust: none; }
   .meter-marker { border-top-color: CanvasText; }
 }

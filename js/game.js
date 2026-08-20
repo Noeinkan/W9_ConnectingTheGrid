@@ -15,13 +15,19 @@
      * which square the next piece must go on, and
      * which side of that piece has to be open to receive the line.
 
-   So there is never more than one legal target square. The choice the player
-   makes is which shape to put on it, and which technology to carry it with.
+   So there is never more than one legal target square.
+
+   Which is the whole reason the player is not asked to choose a shape.
+   A piece that fits has to open on the side the line arrives from, and its
+   OTHER end is the direction the line leaves in - so choosing the shape and
+   choosing the direction are the same choice, and direction is the one a
+   player can see on the map. The six pieces are still exactly what gets
+   recorded and scored; they are just no longer what gets asked about.
 
    Exposes one global: Game.
    ========================================================================= */
 
-var Game = (function (CFG, Score, Render) {
+var Game = (function (CFG, Score, Render, MapGen, Balance) {
   'use strict';
 
   /* ---------------------------------------------------------------------
@@ -30,6 +36,7 @@ var Game = (function (CFG, Score, Render) {
 
   var STEP = { n: [0, -1], e: [1, 0], s: [0, 1], w: [-1, 0] };
   var OPPOSITE = { n: 's', e: 'w', s: 'n', w: 'e' };
+  var SIDES = ['n', 'e', 's', 'w'];
 
   function neighbour(col, row, side) {
     var step = STEP[side];
@@ -48,13 +55,24 @@ var Game = (function (CFG, Score, Render) {
     return 'w';
   }
 
+  // The one piece that opens on both of these sides. There is always exactly
+  // one, because six pieces is every way of picking two of the four sides.
+  function pieceJoining(a, b) {
+    for (var i = 0; i < CFG.pieces.length; i++) {
+      var ends = CFG.pieces[i].connectors;
+      if ((ends[0] === a && ends[1] === b) || (ends[0] === b && ends[1] === a)) {
+        return CFG.pieces[i];
+      }
+    }
+    return null;
+  }
+
   /* ---------------------------------------------------------------------
      State
      ------------------------------------------------------------------- */
 
   var state = {
     route: [],              // [{ col, row, pieceId, techId, typeId }]
-    armedPiece: null,       // the piece id waiting to be placed, or null
     currentTech: CFG.defaultTechnology,
     phase: 'ready',         // ready | routing | complete | notEnergised |
                             // wrongEndPiece | stuck
@@ -62,7 +80,10 @@ var Game = (function (CFG, Score, Render) {
     tone: 'info',
     target: null,           // { col, row } - the one square the next piece goes on
     needSide: null,         // the side that piece must open on
+    openEnd: null,          // the loose end of the line, for drawing it
     fits: {},               // piece id -> would it fit on the target right now
+    exits: [],              // the ways out of the target - see exitsFrom()
+    seed: null,             // which landscape is being played
     canUndo: false,
     canReset: false,
     score: null
@@ -87,6 +108,13 @@ var Game = (function (CFG, Score, Render) {
   }
 
   function sideName(side) { return CFG.copy.sides[side] || side; }
+
+  function say(message, tone) {
+    state.message = message;
+    state.tone = tone || 'info';
+    refresh();
+    return false;
+  }
 
   /* The loose end of the chain: the connector of the last piece that is not
      joined to whatever came before it. For the very first piece, "before it"
@@ -136,7 +164,7 @@ var Game = (function (CFG, Score, Render) {
       return { ok: false, message: copy.errComplete };
     }
     if (!pieceId) {
-      return { ok: false, message: copy.errNoPiece };
+      return { ok: false, message: copy.errWrongSquare };
     }
     if (!state.target || state.target.col !== col || state.target.row !== row) {
       return { ok: false, message: copy.errWrongSquare };
@@ -170,19 +198,57 @@ var Game = (function (CFG, Score, Render) {
     return { ok: true };
   }
 
-  /* Work out the target square, then which of the six pieces would actually
-     fit on it. Both are needed by render: one to highlight the square, the
-     other to grey out the palette tiles that cannot be used. */
+  /* The ways out of the target square.
+
+     Three of them, always: a piece has two ends, one of them is spoken for
+     by the line coming in, and the other can face any of the three
+     remaining sides. Each way out is named by the direction it sends the
+     line rather than by the shape of the piece that does it, because the
+     direction is what the player is actually choosing.
+
+     Ways that are not open are kept in the list rather than dropped. The
+     arrows draw them greyed, and "there is no way north from here" is worth
+     as much to a player as "there is a way east". */
+  function exitsFrom(target, needSide) {
+    if (!target) { return []; }
+
+    return SIDES.filter(function (side) { return side !== needSide; })
+      .map(function (side) {
+        var piece = pieceJoining(needSide, side);
+        return {
+          dir: side,
+          pieceId: piece.id,
+          to: neighbour(target.col, target.row, side),
+          ok: !!state.fits[piece.id]
+        };
+      });
+  }
+
+  function exitTowards(col, row) {
+    for (var i = 0; i < state.exits.length; i++) {
+      var exit = state.exits[i];
+      if (exit.to.col === col && exit.to.row === row) { return exit; }
+    }
+    return null;
+  }
+
+  /* Work out the target square, then which of the six pieces would fit on
+     it, then what that means as directions. Render needs all three: one to
+     highlight the square, one to draw the line's loose end, one to put the
+     arrows on the map. */
   function recomputeTarget() {
     var slot = nextSlot();
     state.target = slot ? slot.at : null;
     state.needSide = slot ? slot.needSide : null;
+    state.openEnd = openEnd();
 
     state.fits = {};
-    if (!state.target) { return; }
+    if (!state.target) { state.exits = []; return; }
+
     CFG.pieces.forEach(function (piece) {
       state.fits[piece.id] = check(state.target.col, state.target.row, piece.id).ok;
     });
+    state.exits = exitsFrom(state.target, state.needSide);
   }
 
   function anyPieceFits() {
@@ -194,51 +260,34 @@ var Game = (function (CFG, Score, Render) {
      ------------------------------------------------------------------- */
 
   function place(col, row, pieceId) {
-    var chosen = pieceId || state.armedPiece;
-    var verdict = check(col, row, chosen);
-    if (!verdict.ok) {
-      state.message = verdict.message;
-      state.tone = 'error';
-      refresh();
-      return false;
-    }
+    var verdict = check(col, row, pieceId);
+    if (!verdict.ok) { return say(verdict.message, 'error'); }
 
     state.route.push({
       col: col,
       row: row,
-      pieceId: chosen,
+      pieceId: pieceId,
       techId: state.currentTech,
       typeId: Score.typeIdAt(col, row)
     });
     cursor = { col: col, row: row };
     settlePhase();
-
-    // Keep the piece armed so a run of straights is one click each, but only
-    // while it would still be a legal next move. settlePhase has already
-    // recomputed which pieces fit the new target.
-    if (!state.fits[chosen]) { state.armedPiece = null; }
     refresh();
     return true;
   }
 
-  /* Choosing a piece always arms it, and never un-arms it. A palette tile
-     that toggled would be a trap: after laying a straight the same tile is
-     still armed, so clicking it again to lay a second one would silently
-     put the piece down instead of picking it up. Escape is the way out. */
-  function armPiece(pieceId) {
-    state.armedPiece = pieceId;
-    state.message = fill(CFG.copy.statusArmed, {
-      piece: Score.piece(pieceId).label
-    });
-    state.tone = 'info';
-    refresh();
-  }
+  /* Send the line from the target square towards (col, row).
 
-  function disarm() {
-    if (!state.armedPiece) { return; }
-    state.armedPiece = null;
-    settlePhase();
-    refresh();
+     This is the only way a piece is ever laid. Clicking an arrow, clicking
+     the square ahead, dragging across the map and pressing an arrow key all
+     end up here, and all of them are saying the same thing: the line goes
+     that way next. Which piece that means is worked out rather than asked
+     about. */
+  function stepTo(col, row) {
+    var exit = exitTowards(col, row);
+    if (!exit) { return say(CFG.copy.errWrongSquare, 'error'); }
+    // Not filtered on exit.ok: check() inside place() knows why, and says so.
+    return place(state.target.col, state.target.row, exit.pieceId);
   }
 
   function setTech(techId) {
@@ -248,18 +297,9 @@ var Game = (function (CFG, Score, Render) {
   }
 
   function undo() {
-    if (!CFG.rules.allowUndo) {
-      state.message = CFG.copy.errUndoDisabled;
-      state.tone = 'error';
-      refresh();
-      return false;
-    }
-    if (state.route.length === 0) {
-      state.message = CFG.copy.errNoRoute;
-      state.tone = 'error';
-      refresh();
-      return false;
-    }
+    if (!CFG.rules.allowUndo) { return say(CFG.copy.errUndoDisabled, 'error'); }
+    if (state.route.length === 0) { return say(CFG.copy.errNoRoute, 'error'); }
+
     var removed = state.route.pop();
     cursor = { col: removed.col, row: removed.row };
     settlePhase();
@@ -269,12 +309,39 @@ var Game = (function (CFG, Score, Render) {
 
   function reset() {
     state.route = [];
-    state.armedPiece = null;
     state.currentTech = CFG.defaultTechnology;
     state.phase = 'ready';
     cursor = { col: CFG.start.col, row: CFG.start.row };
     settlePhase();
     refresh();
+  }
+
+  /* ---------------------------------------------------------------------
+     A new landscape
+     ---------------------------------------------------------------------
+     Generated, checked and only then installed. Everything downstream reads
+     the map through Score, so putting a new one in play is one call and
+     there is no second copy to fall out of step.
+     ------------------------------------------------------------------- */
+
+  function newMap(seed) {
+    var built = MapGen.generate(seed, Balance.verdict);
+
+    Score.setMap(built.rows);
+    state.seed = built.seed;
+
+    var problems = Score.validateMap();
+    if (problems.length) {
+      // A broken map is a bug in the generator, and silence would not help.
+      console.error('Connecting the Grid - the generated map has problems:');
+      problems.forEach(function (problem) { console.error('  - ' + problem); });
+    }
+
+    Render.buildMap(built.rows, built.features, built.seed);
+    Render.paintSeed(built.seed);
+    reset();
+    Render.setCursor(cursor.col, cursor.row, false);
+    return built;
   }
 
   /* ---------------------------------------------------------------------
@@ -292,7 +359,9 @@ var Game = (function (CFG, Score, Render) {
       if (openEnd() !== CFG.end.exit) {
         // The line has landed on the demand centre but runs straight past it.
         state.phase = 'wrongEndPiece';
-        state.message = copy.statusWrongEndPiece;
+        state.message = fill(copy.statusWrongEndPiece, {
+          side: sideName(OPPOSITE[CFG.end.exit])
+        });
         state.tone = 'warning';
       } else if (CFG.rules.requireSubstation && !scored.crossesSubstation) {
         state.phase = 'notEnergised';
@@ -335,49 +404,114 @@ var Game = (function (CFG, Score, Render) {
 
   /* ---------------------------------------------------------------------
      Input
+     ---------------------------------------------------------------------
+     Four ways to say the same thing, and they all end at stepTo().
      ------------------------------------------------------------------- */
 
-  function onCellActivate(event) {
-    var button = event.currentTarget;
-    place(Number(button.dataset.col), Number(button.dataset.row), null);
+  function onCellActivate(col, row) {
+    if (!state.target) { return say(CFG.copy.errComplete, 'error'); }
+
+    // Clicking the square ahead of the line sends the line to it.
+    var exit = exitTowards(col, row);
+    if (exit) { return stepTo(col, row); }
+
+    /* Clicking the highlighted square itself carries straight on, which is
+       what a long run of straights wants: one click per square, no aiming.
+       Only if straight ahead is actually open - otherwise the line would
+       silently turn a corner nobody asked for. */
+    if (col === state.target.col && row === state.target.row) {
+      var onwards = neighbour(col, row, OPPOSITE[state.needSide]);
+      var ahead = exitTowards(onwards.col, onwards.row);
+      if (ahead && ahead.ok) { return stepTo(onwards.col, onwards.row); }
+      return say(CFG.copy.errNoStraight, 'error');
+    }
+
+    return say(CFG.copy.errWrongSquare, 'error');
   }
 
-  function onCellFocus(event) {
-    var button = event.currentTarget;
-    cursor = { col: Number(button.dataset.col), row: Number(button.dataset.row) };
+  function onCellFocus(col, row) {
+    cursor = { col: col, row: row };
   }
 
-  // A piece dragged from the palette and dropped on a square.
-  function onCellDrop(col, row, pieceId) {
-    state.armedPiece = pieceId;
-    place(col, row, pieceId);
+  /* Dragging draws the line, and dragging back over it rubs it out.
+
+     A drag may only start on the square the next piece goes on, or on the
+     end of the line - anywhere else and it is a stray gesture, not a
+     drawing one. Squares the line cannot reach are ignored in silence: one
+     drag crosses a lot of them and a complaint about each would fire the
+     live region dozens of times over. */
+  function canStartDrag(col, row) {
+    if (state.target && state.target.col === col && state.target.row === row) { return true; }
+    var last = head();
+    return !!last && last.col === col && last.row === row;
   }
 
-  // Arrow keys walk the cursor around the board without laying anything.
+  function onDragOver(col, row) {
+    var exit = exitTowards(col, row);
+    if (exit && exit.ok) { stepTo(col, row); return; }
+
+    var backOne = state.route[state.route.length - 2];
+    if (backOne && backOne.col === col && backOne.row === row) { undo(); }
+  }
+
   var ARROWS = {
-    ArrowUp: [0, -1], ArrowRight: [1, 0], ArrowDown: [0, 1], ArrowLeft: [-1, 0]
+    ArrowUp: 'n', ArrowRight: 'e', ArrowDown: 's', ArrowLeft: 'w'
   };
 
+  /* Arrow keys walk the cursor around the map - except on the highlighted
+     square, where an arrow pointing somewhere the line can go lays it.
+
+     That exception is what makes the game playable from the keyboard at the
+     same speed as with a mouse: arrow, arrow, arrow draws a route. And it
+     cannot trap anybody, because the way the line came in is never a legal
+     way out, so there is always at least one direction that still just
+     moves the cursor. */
   function onBoardKeyDown(event) {
-    var step = ARROWS[event.key];
-    if (step) {
+    var side = ARROWS[event.key];
+
+    if (side) {
       event.preventDefault();
-      var col = Math.min(CFG.grid.cols - 1, Math.max(0, cursor.col + step[0]));
-      var row = Math.min(CFG.grid.rows - 1, Math.max(0, cursor.row + step[1]));
-      cursor = { col: col, row: row };
-      Render.setCursor(col, row, true);
+      var onTarget = state.target &&
+        cursor.col === state.target.col && cursor.row === state.target.row;
+
+      if (onTarget) {
+        var to = neighbour(cursor.col, cursor.row, side);
+        var exit = exitTowards(to.col, to.row);
+        if (exit && exit.ok) {
+          stepTo(to.col, to.row);
+          // Follow the line, so the next arrow carries straight on drawing.
+          if (state.target) { cursor = { col: state.target.col, row: state.target.row }; }
+          Render.setCursor(cursor.col, cursor.row, true);
+          return;
+        }
+      }
+
+      var step = STEP[side];
+      cursor = {
+        col: Math.min(CFG.grid.cols - 1, Math.max(0, cursor.col + step[0])),
+        row: Math.min(CFG.grid.rows - 1, Math.max(0, cursor.row + step[1]))
+      };
+      Render.setCursor(cursor.col, cursor.row, true);
       return;
     }
-    if (event.key === 'Home') {
+
+    if (event.key === 'Home' || event.key === 'End') {
       event.preventDefault();
-      cursor.col = 0;
+      cursor.col = event.key === 'Home' ? 0 : CFG.grid.cols - 1;
       Render.setCursor(cursor.col, cursor.row, true);
     }
-    if (event.key === 'End') {
-      event.preventDefault();
-      cursor.col = CFG.grid.cols - 1;
-      Render.setCursor(cursor.col, cursor.row, true);
-    }
+  }
+
+  // 1, 2 and 3 pick a technology from anywhere on the page.
+  function onShortcut(event) {
+    if (event.metaKey || event.ctrlKey || event.altKey) { return; }
+    if (event.key === 'Escape') { Render.hideTip(); return; }
+
+    var index = ['1', '2', '3'].indexOf(event.key);
+    if (index === -1 || index >= CFG.technologies.length) { return; }
+    var field = event.target && event.target.tagName;
+    if (field === 'INPUT' || field === 'TEXTAREA') { return; }
+    setTech(CFG.technologies[index].id);
   }
 
   /* ---------------------------------------------------------------------
@@ -387,75 +521,74 @@ var Game = (function (CFG, Score, Render) {
   function init() {
     Render.cacheElements({
       title: 'gameTitle',
-      strapline: 'gameStrapline',
+      boardWrap: 'boardWrap',
+      art: 'art',
       board: 'board',
+      chevrons: 'chevrons',
+      tip: 'tip',
       status: 'status',
       legend: 'legend',
       legendHeading: 'legendHeading',
-      piecesHeading: 'piecesHeading',
-      piecesHint: 'piecesHint',
-      pieces: 'pieces',
       techHeading: 'techHeading',
       techHint: 'techHint',
       tech: 'tech',
       dialsHeading: 'dialsHeading',
       meters: 'meters',
-      controlsHeading: 'controlsHeading',
       undo: 'undoButton',
       reset: 'resetButton',
-      home: 'homeTab',
+      newMap: 'newMapButton',
+      seedLabel: 'seedLabel',
+      seedValue: 'seedValue',
       instructionsTab: 'instructionsTab',
       instructionsDialog: 'instructionsDialog',
       instructionsHeading: 'instructionsHeading',
       instructionsBody: 'instructionsBody',
+      instructionsLead: 'instructionsLead',
+      instructionsClose: 'instructionsClose',
+      verdictClose: 'verdictClose',
       verdictDialog: 'verdictDialog',
       verdictHeading: 'verdictHeading',
       verdictTitle: 'verdictTitle',
       verdictBody: 'verdictBody'
     });
 
-    var problems = Score.validateMap();
-    if (problems.length) {
-      // A broken map is a config error, and silence would be unhelpful.
-      console.error('Connecting the Grid - the map in config.js has problems:');
-      problems.forEach(function (problem) { console.error('  - ' + problem); });
-    }
-
     Render.paintStaticCopy();
-    Render.buildBoard(Render.elements.board, onCellActivate, onCellFocus, onCellDrop);
-    Render.buildPalette(Render.elements.pieces, armPiece);
+    Render.buildBoard(Render.elements.board, {
+      onActivate: onCellActivate,
+      onFocus: onCellFocus,
+      onStep: stepTo,
+      canStartDrag: canStartDrag,
+      onDragOver: onDragOver
+    });
     Render.buildTechPicker(Render.elements.tech, setTech);
     Render.buildMeters(Render.elements.meters);
     Render.buildLegend(Render.elements.legend);
     Render.buildInstructions(Render.elements.instructionsBody);
 
     Render.elements.board.addEventListener('keydown', onBoardKeyDown);
-    document.addEventListener('keydown', function (event) {
-      if (event.key === 'Escape') { disarm(); }
-    });
+    document.addEventListener('keydown', onShortcut);
     Render.elements.undo.addEventListener('click', function () { undo(); });
     Render.elements.reset.addEventListener('click', function () { reset(); });
-    Render.elements.home.addEventListener('click', function () { reset(); });
+    Render.elements.newMap.addEventListener('click', function () { newMap(); });
     Render.elements.instructionsTab.addEventListener('click', function () {
       Render.openDialog(Render.elements.instructionsDialog);
     });
 
-    reset();
-    Render.setCursor(CFG.start.col, CFG.start.row, false);
+    newMap();
   }
 
   return {
     init: init,
+    newMap: newMap,
+    stepTo: stepTo,
     place: place,
-    armPiece: armPiece,
-    disarm: disarm,
     setTech: setTech,
     undo: undo,
     reset: reset,
     state: state
   };
 
-}(CONFIG, Score, Render));
+}(CONFIG, Score, Render, MapGen, Balance));
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', Game.init);
