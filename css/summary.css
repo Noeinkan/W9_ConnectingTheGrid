@@ -1,0 +1,121 @@
+/* =========================================================================
+   Connecting the Grid - route summary, Blind mode, kind of landscape
+   =========================================================================
+   Loaded after css/style.css and css/guidance.css, and uses their brand
+   tokens only: no colour is defined here.
+   ========================================================================= */
+
+
+/* -------------------------------------------------------------------------
+   The route so far
+   -------------------------------------------------------------------------
+   A drawer inside the Points panel, one line while closed. The rail has to
+   fit a 1280x720 screen, and measured with everything else in it there was
+   no room for this as a panel of its own: it cost 164px. Opened, the counts
+   wrap as chips rather than stacking one per line.
+   ---------------------------------------------------------------------- */
+.route-summary {
+  margin-top: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--brand-line);
+  font-size: 0.74rem;
+}
+.route-summary > summary {
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.summary-title {
+  margin-right: 0.35rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--brand-ink-muted);
+}
+.summary-line { color: var(--brand-ink); }
+
+.summary-counts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.25rem 0.5rem;
+  align-items: baseline;
+  margin: 0.4rem 0 0;
+}
+.summary-counts dt {
+  font-size: 0.66rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--brand-ink-muted);
+}
+.summary-counts dd {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
+  margin: 0;
+}
+.summary-chip {
+  padding: 0 0.35rem;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  white-space: nowrap;
+  color: var(--brand-ink);
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-line);
+  border-radius: 999px;
+}
+
+.summary-holding { margin: 0.45rem 0 0; font-weight: 600; }
+.summary-holding[data-state="holding"] { color: var(--brand-warning); }
+.summary-holding[data-state="clear"]   { color: var(--brand-positive, var(--brand-ink)); }
+
+
+/* -------------------------------------------------------------------------
+   Committed mode and Blind mode, side by side
+   ---------------------------------------------------------------------- */
+.switches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 1rem;
+  padding-block: 0.5rem;
+}
+.switches .switch { cursor: help; }
+.switches .switch input { cursor: pointer; }
+
+
+/* -------------------------------------------------------------------------
+   The kind of landscape, beside its name
+   ---------------------------------------------------------------------- */
+.archetype {
+  display: inline-block;
+  margin-left: 0.3rem;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  color: var(--brand-ink);
+  border: 1px solid var(--brand-line);
+  border-radius: 999px;
+  cursor: help;
+}
+
+
+/* -------------------------------------------------------------------------
+   Blind mode
+   -------------------------------------------------------------------------
+   `data-blind` is on the app shell only while the score is being held
+   back, and comes off the move the connection is energised. Hidden with
+   display:none rather than made invisible, so a screen reader does not
+   read out the very numbers the mode exists to hide - the meters carry
+   their reading in aria-valuetext.
+
+   What stays: the land, and what each kind of ground costs. Those are
+   facts about the map, not a verdict on the route.
+   ---------------------------------------------------------------------- */
+.blind-note { display: none; }
+
+.app[data-blind] .meters,
+.app[data-blind] .tip-preview { display: none; }
+
+.app[data-blind] .blind-note { display: block; margin-top: 0; }

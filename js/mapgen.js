@@ -44,6 +44,63 @@ var MapGen = (function (CFG, Rng, Score) {
   }
 
   /* ---------------------------------------------------------------------
+     Archetypes
+     ---------------------------------------------------------------------
+     Which kind of landscape a seed draws. Worked out from the seed alone,
+     by weight, from CONFIG.archetypes - so a seed typed in, sent in a link
+     or derived from today's date always lands on the same archetype, and
+     so on the same map. Nothing about it is stored or passed along.
+
+     An archetype changes only the generator's numbers. Whether a map of
+     that kind is worth showing is js/archetypes.js, which adds its own
+     test on top of the balance check.
+     ------------------------------------------------------------------- */
+
+  function archetypeList() { return CFG.archetypes || []; }
+
+  function archetypeFor(seed) {
+    var list = archetypeList();
+    if (!list.length || !seed) { return null; }
+
+    var total = 0;
+    list.forEach(function (kind) { total += kind.weight || 0; });
+    if (total <= 0) { return list[0].id; }
+
+    var roll = Rng.make('archetype:' + seed)() * total;
+    for (var i = 0; i < list.length; i++) {
+      roll -= list[i].weight || 0;
+      if (roll < 0) { return list[i].id; }
+    }
+    return list[list.length - 1].id;
+  }
+
+  /* CONFIG.generator with the archetype's changes laid over it. One level
+     deep, so an archetype can say `town: { side: 'gap' }` without having to
+     repeat how many cells the town has. */
+  function paramsFor(archetypeId) {
+    var base = CFG.generator;
+    var kind = null;
+    archetypeList().forEach(function (entry) { if (entry.id === archetypeId) { kind = entry; } });
+    if (!kind || !kind.generator) { return base; }
+
+    var out = {};
+    Object.keys(base).forEach(function (key) { out[key] = base[key]; });
+    Object.keys(kind.generator).forEach(function (key) {
+      var over = kind.generator[key];
+      if (over && typeof over === 'object' && !Array.isArray(over) &&
+          base[key] && typeof base[key] === 'object' && !Array.isArray(base[key])) {
+        var mixed = {};
+        Object.keys(base[key]).forEach(function (k) { mixed[k] = base[key][k]; });
+        Object.keys(over).forEach(function (k) { mixed[k] = over[k]; });
+        out[key] = mixed;
+      } else {
+        out[key] = over;
+      }
+    });
+    return out;
+  }
+
+  /* ---------------------------------------------------------------------
      Pass 1 - the lie of the land
      ---------------------------------------------------------------------
      Two smooth fields, height and wetness. High ground becomes rocky and
@@ -169,6 +226,36 @@ var MapGen = (function (CFG, Rng, Score) {
     }
 
     return chain;
+  }
+
+  /* Riverside woodland, for the archetypes that want the crossing to hurt.
+
+     Off unless CONFIG asks for it, and it has to be: it changes every map
+     it touches. With it on, the soft ground either side of the river grows
+     trees, so there is no cheap place left to cross. On a straight the
+     line pays for the river AND the woods on its banks; at a bend it pays
+     for two cells of river. The river chain itself is untouched, so the
+     drawing needs nothing new - woodland is ordinary woodland.
+
+     Uses its own hash rather than the shared stream, so switching it on
+     does not reshuffle the road, the gap side or anything drawn after it. */
+  function plantBanks(grid, seed, chain, share) {
+    var cols = CFG.grid.cols;
+    var salt = Rng.seedFrom(seed + ':banks');
+    var planted = [];
+
+    chain.forEach(function (at) {
+      [-1, 1].forEach(function (side) {
+        var col = at[0] + side;
+        var row = at[1];
+        if (col < 0 || col >= cols) { return; }
+        if (!SOFT[grid[row][col]]) { return; }
+        if (Rng.hash2(col, row, salt) >= share) { return; }
+        grid[row][col] = 'woodland';
+        planted.push([col, row]);
+      });
+    });
+    return planted;
   }
 
   /* ---------------------------------------------------------------------
@@ -376,8 +463,11 @@ var MapGen = (function (CFG, Rng, Score) {
      Building one candidate
      ------------------------------------------------------------------- */
 
-  function build(seed) {
-    var gen = CFG.generator;
+  /* `params` is a whole generator block, shaped like CONFIG.generator. Left
+     off, the seed's own archetype decides it - see archetypeFor below - so
+     a seed always draws the same landscape whoever asks for it. */
+  function build(seed, params) {
+    var gen = params || paramsFor(archetypeFor(seed));
     var cols = CFG.grid.cols;
     var rows = CFG.grid.rows;
     var rng = Rng.make(seed);
@@ -394,6 +484,7 @@ var MapGen = (function (CFG, Rng, Score) {
 
     var river = walkSouth(grid, rng, gen.river.band, gen.river.drift, 'river');
     var road = walkSouth(grid, rng, gen.road.band, gen.road.drift, 'road');
+    if (gen.river.banks) { plantBanks(grid, seed, river, gen.river.banks); }
 
     // Which end of the map the way round runs along.
     var gapSide = Rng.chance(rng, 0.5) ? 'n' : 's';
@@ -404,7 +495,11 @@ var MapGen = (function (CFG, Rng, Score) {
     /* The town sits beside the demand centre, on the far side from the gap,
        so the way round is not forced through somebody's back garden after
        all that effort. */
-    var townRow = clamp(CFG.end.row + (gapSide === 'n' ? 2 : -2), 0, rows - 1);
+    /* Unless the archetype wants the opposite: with town.side 'gap' the
+       houses stand across the way round instead, and the clean route has
+       to go past somebody's back garden after all - or pay to bury it. */
+    var townTowardsGap = gen.town.side === 'gap';
+    var townRow = clamp(CFG.end.row + ((gapSide === 'n') !== townTowardsGap ? 2 : -2), 0, rows - 1);
     var town = growBlob(grid, rng, [cols - 1, townRow], gen.town.cells, 'settlement');
 
     var rewards = placeRewards(grid, rng, gen, gapSide);
@@ -424,6 +519,8 @@ var MapGen = (function (CFG, Rng, Score) {
 
     return {
       seed: seed,
+      // Null when the caller handed over its own numbers: then nobody knows.
+      archetype: params ? null : archetypeFor(seed),
       rows: grid.map(function (line) {
         return line.map(function (typeId) { return LETTER[typeId]; }).join('');
       }),
@@ -449,13 +546,38 @@ var MapGen = (function (CFG, Rng, Score) {
      entire point of a seed. Only a fresh landscape gets rerolled.
      ------------------------------------------------------------------- */
 
+  /* The checker to use when the caller names none: the archetype-aware one
+     if js/archetypes.js is loaded, the plain balance check if not. */
+  function defaultChecker() {
+    if (typeof Archetypes !== 'undefined') { return Archetypes.verdict; }
+    if (typeof Balance !== 'undefined') { return Balance.verdict; }
+    return null;
+  }
+
+  /* Asks a checker about a candidate. Balance.verdict wants the rows and
+     nothing else - its second argument is a search floor, and a candidate
+     passed there would be a quiet mistake - so the whole candidate goes
+     only to a checker that says it wants one, which is how an archetype's
+     own test learns which kind of map it is looking at. */
+  function judge(check, candidate) {
+    if (!check) { return { ok: true }; }
+    return check.wantsCandidate ? check(candidate.rows, candidate) : check(candidate.rows);
+  }
+
+  // How many rerolls a kind of landscape gets before the fallback.
+  function triesFor(archetypeId) {
+    var kind = null;
+    archetypeList().forEach(function (entry) { if (entry.id === archetypeId) { kind = entry; } });
+    return (kind && kind.maxTries) || CFG.generator.maxTries;
+  }
+
   function generate(seed, checker) {
     var gen = CFG.generator;
-    var check = checker || (typeof Balance !== 'undefined' ? Balance.verdict : null);
+    var check = checker || defaultChecker();
 
     if (seed) {
       var asked = build(seed);
-      asked.verdict = check ? check(asked.rows) : null;
+      asked.verdict = check ? judge(check, asked) : null;
       asked.tries = 1;
       return asked;
     }
@@ -463,12 +585,28 @@ var MapGen = (function (CFG, Rng, Score) {
     var rng = Rng.make(Date.now() + ':' + Math.floor(Math.random() * 1e9));
     var rejected = 0;
 
-    for (var attempt = 0; attempt < gen.maxTries; attempt++) {
-      var candidate = build(Rng.seedString(rng, gen.seedLength));
-      var verdict = check ? check(candidate.rows) : { ok: true };
+    /* The kind is settled by the first roll and kept through the rerolls.
+       Rerolling into whatever kind comes up next would quietly favour the
+       kinds that are easiest to accept, and the weights in CONFIG would
+       stop meaning what they say. Rolling a seed is nearly free - only a
+       seed of the right kind is built and checked - and the draw limit only
+       stops a CONFIG with a zero-weight kind from spinning for ever. */
+    var wanted;
+    var limit = gen.maxTries;
+    var draws = 0;
+
+    for (var attempt = 0; attempt < limit && draws < limit * 500; draws++) {
+      var name = Rng.seedString(rng, gen.seedLength);
+      var kind = archetypeFor(name);
+      if (draws === 0) { wanted = kind; limit = triesFor(kind); }
+      else if (kind !== wanted) { continue; }
+
+      attempt++;
+      var candidate = build(name);
+      var verdict = judge(check, candidate);
       if (verdict.ok) {
         candidate.verdict = verdict;
-        candidate.tries = attempt + 1;
+        candidate.tries = attempt;
         return candidate;
       }
       rejected++;
@@ -482,7 +620,7 @@ var MapGen = (function (CFG, Rng, Score) {
                    'rejected in a row. Falling back to seed ' + gen.fallbackSeed + '.');
     }
     var spare = build(gen.fallbackSeed);
-    spare.verdict = check ? check(spare.rows) : null;
+    spare.verdict = check ? judge(check, spare) : null;
     spare.tries = rejected;
     spare.fellBack = true;
     return spare;
@@ -514,23 +652,56 @@ var MapGen = (function (CFG, Rng, Score) {
       twoDigits(when.getUTCDate());
   }
 
-  function dailySeed(dateText, attempt) {
+  /* The ISO week, in UTC, as '2026-W38'. Weeks start on Monday and belong
+     to the year their Thursday falls in, which is the convention that gives
+     every week exactly one number - a week straddling New Year is not two
+     weeks with two landscapes. */
+  function weekUTC(now) {
+    var when = now || new Date();
+    var day = Date.UTC(when.getUTCFullYear(), when.getUTCMonth(), when.getUTCDate());
+    var DAY = 86400000;
+    var fromMonday = (new Date(day).getUTCDay() + 6) % 7;
+    var thursday = new Date(day + (3 - fromMonday) * DAY);
+    var year = thursday.getUTCFullYear();
+    var week = 1 + Math.floor((thursday.getTime() - Date.UTC(year, 0, 1)) / DAY / 7);
+    return year + '-W' + twoDigits(week);
+  }
+
+  function datedSeed(prefix, key, attempt) {
     return Rng.seedString(
-      Rng.make('daily:' + dateText + ':' + attempt),
+      Rng.make(prefix + ':' + key + ':' + attempt),
       CFG.generator.seedLength);
   }
 
-  function daily(dateText, checker) {
-    var when = dateText || todayUTC();
-    var check = checker || (typeof Balance !== 'undefined' ? Balance.verdict : null);
+  /* One landscape per date, or per week: the same walk for both. `allow`
+     says which kinds of landscape the walk may stop on.
 
-    for (var attempt = 0; attempt < CFG.generator.maxTries; attempt++) {
-      var candidate = build(dailySeed(when, attempt));
-      var judged = check ? check(candidate.rows) : { ok: true };
+     As with a fresh landscape, the first seed the walk may use settles the
+     kind, and later seeds of any other kind are stepped over without being
+     built or using up a try. Without that the day would drift towards the
+     kinds that are easiest to accept - measured over 2026, the plain kind
+     took 59% of the days against the 37.5% its weight gives it. The walk is
+     still the same for everybody, because every step of it is. */
+  function dated(prefix, key, checker, allow) {
+    var check = checker || defaultChecker();
+    var tries = 0;
+    var limit = CFG.generator.maxTries;
+    var settled = false;
+    var wanted;
+
+    for (var attempt = 0; tries < limit && attempt < limit * 500; attempt++) {
+      var name = datedSeed(prefix, key, attempt);
+      var kind = archetypeFor(name);
+      if (allow && !allow(kind)) { continue; }
+      if (!settled) { settled = true; wanted = kind; limit = triesFor(kind); }
+      else if (kind !== wanted) { continue; }
+      tries++;
+
+      var candidate = build(name);
+      var judged = judge(check, candidate);
       if (judged.ok) {
         candidate.verdict = judged;
-        candidate.tries = attempt + 1;
-        candidate.daily = when;
+        candidate.tries = tries;
         return candidate;
       }
     }
@@ -539,11 +710,33 @@ var MapGen = (function (CFG, Rng, Score) {
        puzzle today. The fallback is verified at design time and is the same
        for everyone, so the day still has one landscape rather than none. */
     var spare = build(CFG.generator.fallbackSeed);
-    spare.verdict = check ? check(spare.rows) : null;
-    spare.tries = CFG.generator.maxTries;
-    spare.daily = when;
+    spare.verdict = check ? judge(check, spare) : null;
+    spare.tries = tries;
     spare.fellBack = true;
     return spare;
+  }
+
+  function daily(dateText, checker) {
+    var when = dateText || todayUTC();
+    // 'daily' is the prefix every day's landscape has always been drawn from.
+    var built = dated('daily', when, checker, null);
+    built.daily = when;
+    return built;
+  }
+
+  /* This week's landscape is always one of the particular kinds - the plain
+     one is what New landscape is for - so the week has a character. */
+  function weekly(weekText, checker) {
+    var when = weekText || weekUTC();
+    var built = dated('weekly', when, checker, function (archetypeId) {
+      var ok = false;
+      archetypeList().forEach(function (entry) {
+        if (entry.id === archetypeId && entry.weekly) { ok = true; }
+      });
+      return ok || !archetypeList().length;
+    });
+    built.weekly = when;
+    return built;
   }
 
   /* ---------------------------------------------------------------------
@@ -673,7 +866,8 @@ var MapGen = (function (CFG, Rng, Score) {
     if (typeof Balance === 'undefined') {
       say('  SKIP  balance.js is not loaded, so it cannot be checked here');
     } else {
-      var spare = Balance.verdict(build(CFG.generator.fallbackSeed).rows);
+      // Judged as the kind of landscape it is, when the kinds are loaded.
+      var spare = judge(defaultChecker(), build(CFG.generator.fallbackSeed));
       check('it still makes a map worth playing', spare.ok, spare.reason);
     }
 
@@ -686,9 +880,13 @@ var MapGen = (function (CFG, Rng, Score) {
 
   return {
     build: build,
+    archetypeFor: archetypeFor,
+    paramsFor: paramsFor,
     generate: generate,
     daily: daily,
+    weekly: weekly,
     todayUTC: todayUTC,
+    weekUTC: weekUTC,
     selfTest: selfTest
   };
 
@@ -704,6 +902,8 @@ if (typeof module !== 'undefined' && module.exports) {
 /* Command line: node js/mapgen.js --self-test  |  node js/mapgen.js SEED */
 if (typeof require !== 'undefined' && typeof module !== 'undefined' && require.main === module) {
   var Balance = require('./balance.js');
+  // Declared at module level so the generator above sees the kinds too.
+  var Archetypes = require('./archetypes.js');
   var argument = process.argv[2];
   if (argument === '--self-test' || !argument) {
     process.exit(MapGen.selfTest() ? 0 : 1);

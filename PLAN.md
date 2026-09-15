@@ -671,3 +671,319 @@ from 61 - and the 500-seed sweep):
 
 Sound, the draw-on animation, the dark-theme toggle, and persistence of any
 kind.
+
+
+---
+
+# Round three
+
+Four recommendations came in: more decision pressure than three dials, a
+"why" before and after each move, a generator that is interesting rather
+than merely balanced, and modes that give a reason to come back. About a
+third of them were already in the game, and two collided with rules it was
+built on. This section records what was decided, what was built in the first
+slice, and what is planned but deliberately not built yet.
+
+Two other sessions worked on the repository at the same time: one redrew the
+map and the route (`mapsymbols.js`, `routeart.js`), and one built guidance
+while routing (`foresight.js`, `advice.js`, `guidance.js`, `tour.js`), which
+has its own section after this one. The areas were agreed before any file
+was written.
+
+## 1. What already existed
+
+* **"Projected score if you continue"** - the ghost markers in the meters
+  (round two) for the next span, and now the forecast from the guidance
+  session for the whole remaining route.
+* **A best-route overlay** - drawn after the finish since round two.
+* **Daily challenge** - `?daily`.
+* **A strict mode** - Committed mode.
+* **Optional upgrades** - the three technologies already are undergrounding
+  and quieter towers. "Reduces future penalties" has nothing to attach to:
+  the game has no later phase.
+* **A "high-balance" map** - roughly what the Tight difficulty badge marks.
+
+## 2. Decisions
+
+| Question | Decision | Why |
+|---|---|---|
+| What to deliver | Plan all four, build a first slice | The mechanics and the campaign touch scoring and the balance search; the rest does not. |
+| New mechanics | Fixed per-square rules only | The balance search prices every square in advance. A rule that depends on *when* or *in what order* a square is crossed breaks the guarantee that a balanced route exists. |
+| Campaign progress | In the address bar | Keeps round two's promise that nothing is stored. A campaign becomes a link. |
+
+## 3. Built: kinds of landscape
+
+`CONFIG.archetypes` lists six kinds. Which kind a map is comes **from its
+seed, by weight** (`MapGen.archetypeFor`), so a seed typed in, shared or
+derived from a date always draws the same kind and the same map. A kind is
+two things kept in two places:
+
+* **the numbers it is drawn with** - changes laid one level deep over
+  `CONFIG.generator`, applied by `MapGen.build`;
+* **what it must show to count** - `js/archetypes.js`, a test run on top of
+  the balance check, never instead of it.
+
+| Kind | Drawn with | Must show | Accepted |
+|---|---|---|---|
+| Open country | the generator as it was | nothing more | 78% |
+| Narrow gap | one gap row, rougher ground, bigger lake | best weakest dial under 73 | 42% |
+| Community pressure | the town on the side of the way round | the best route cannot keep community at 90 | 31% |
+| Hard crossing | woodland on both river banks | nothing more | 53% |
+| Knife edge | town across the way round, wooded banks | no dial on the best route above 85 | 33% |
+| The long way round | the generator as it was | the best route costs at most 1.08x the cheapest | 16% (60 tries) |
+
+Acceptance is measured per kind with `node js/archetypes.js --seeds 300`,
+which also prints the chance a player is shown the fallback instead. The
+worst is Community pressure at about 1 in 8,000.
+
+Three generator options were added, all off unless a kind asks:
+`river.banks`, `town.side: 'gap'`, and `build(seed, params)` itself. None
+adds a cell type or changes the `features` shape, so the map art needed
+nothing. `plantBanks` hashes its own salt rather than drawing from the shared
+stream, so switching it on does not move the road or the gap.
+
+Two things considered and dropped, on measurement:
+
+* *"All three dials near the threshold"* on the plain generator was accepted
+  0.3% of the time. It needed the town moved across the way round before it
+  could exist at all, which is why Knife edge borrows Community pressure's
+  town.
+* *"The best route uses the funding"* (tested by removing the grants and
+  re-searching) was accepted 1-7% of the time and doubled the check's cost.
+  The long way round replaced it.
+
+**The kind is held through rerolls.** A fresh landscape, today's and this
+week's all settle the kind on the first seed and step over seeds of any other
+kind without building them. Without that, rerolls drift towards the kinds
+that are easiest to accept: over 2026 the plain kind took 59% of the days
+against the 37.5% its weight gives it. With it, 131 days against 137
+expected.
+
+**Consequence worth knowing:** a seed shared before this round that now
+falls on a particular kind draws a different map than it did. Open-country
+seeds draw exactly the map they always did (checked in the self test). The
+fallback seed `9MA7JX` is Open country and still accepted.
+
+## 4. Built: This week's landscape, Blind mode, the route so far
+
+**This week's landscape** - `?weekly` and a top-bar button. The seed comes
+from the ISO week in UTC (`MapGen.weekUTC`, weeks start Monday and belong to
+the year of their Thursday), through the same deterministic walk as the
+daily one, and it is always one of the particular kinds. Over 2026: all 53
+weeks accepted, none on the fallback, none repeated.
+
+**Blind mode** - a switch beside Committed mode. `state.blind` lives in
+`game.js`; `summarypanel.js` puts `data-blind` on the app shell until the
+connection is energised, and the stylesheets hide every reading of the score
+under it: the meters (`display: none`, so their `aria-valuetext` is not read
+out either), the tooltip preview, the forecast, and the guidance session's
+mood lines. The land and what each kind of ground costs stay visible - those
+are facts about the map. The reveal and the verdict arrive on the same move.
+
+**The route so far** - `js/summary.js` (pure, Node-tested) and one line under
+the meters that opens into ground crossed, technology used, and which dial
+would decide the verdict if the route finished now. Facts only. The "why"
+sentences - sensitive ground ahead, no budget left for the final approach -
+belong to the guidance session's forecast and explanations, and are not
+repeated here, so a screen reader never hears the same news twice.
+
+**Rail height.** Measured with both sessions' additions in at 1280x720, the
+rail first overflowed by 343px. The summary became a closed drawer inside
+the Points panel, and the two switch hints moved to `aria-describedby` plus a
+hover title, and the guidance session compacted its forecast block. With the
+drawer closed the rail now fits exactly at 1280x720 and above; opened, it
+scrolls inside the rail. The page itself never scrolls.
+
+## 5. Planned, not built
+
+**Decision pressure, as fixed per-square rules.** Each is a cost set when the
+map is made, so the balance search still prices it:
+
+* *Season* - a map-wide condition drawn from the seed: in a wet season river
+  and woodland cost more, in a dry one hills do. Shown as a badge beside the
+  kind.
+* *Visual impact* - a community penalty on squares next to houses, not only
+  on the houses. Precomputed per square, so the search sees it.
+* *Consenting risk* - a per-square cost on corridors a planning authority
+  has flagged, drawn as a hatched overlay.
+
+Each needs `score.js` and `balance.js` to read a per-map cost table instead
+of `CONFIG.cellTypes` alone, which is the first step and the one to agree
+with whoever holds those files.
+
+**Campaign.** Three to five landscapes of one region, all in the address:
+`?campaign=REGION&stage=3&scores=73.1,70.4`. The region name seeds the stage
+seeds, so a campaign is a link. The portfolio score is the mean weakest dial
+against the mean par. Nothing is stored.
+
+**Smaller ones.** A detour penalty for a Hard mode (a fixed cost per span
+beyond the shortest route, so it stays a per-square rule); `&blind` in the
+address so a blind challenge can be shared; a kind picker for players who
+want a particular kind.
+
+## 6. What was checked
+
+* `node js/archetypes.js --self-test --calendar` - 67 checks: the kinds in
+  CONFIG, seed-to-kind proportions over 8,000 seeds, each generator change
+  visible in the maps, one map of each kind accepted within its tries with its
+  best route traceable, ISO week edges, every day and week of 2026.
+* `node js/archetypes.js --seeds 300` - the table in §3.
+* `node js/mapgen.js --self-test` 71, `node js/summary.js` 13, the score self
+  test 12, and the guidance session's `node js/foresight.js` 82 - all passing
+  on the new maps.
+* `node js/balance.js --seeds 500` now reports 66.2% accepted, median weakest
+  72.5. That sweep judges every kind by the plain balance check only, so the
+  drop from 74.6% is the harder kinds, not a regression. The difficulty bands
+  in `CONFIG.difficulty` were left alone; Narrow gap maps are always Tight by
+  construction.
+* In headless Chromium off `file://`: a seed shows its kind; the best route
+  played through the game finishes on par; the summary counts; Blind mode
+  hides the meters and forecast mid-route and brings them back on the
+  finishing move; `?weekly` and the button give the same landscape twice; 12
+  fresh landscapes all accepted as their own kind; no console errors; no page
+  scroll at 1280x720, 1366x768 and 1920x1080.
+
+
+---
+
+# Guidance while routing
+
+Built alongside round three, in its own files. The brief was two lists of
+UX improvements:
+
+* **Route feedback while drawing.** Highlight the best remaining corridor,
+  show a projected verdict while dragging, colour the route as it moves into
+  good or bad ground, and explain local penalties such as a road crossing or
+  a river detour where the pointer is.
+* **Accessibility and clarity.** A quick tour for first-time players, clearer
+  labels for what each technology does on each kind of ground, a keyboard
+  route preview and an "explain last move" command, and notes explaining why
+  a dial is low.
+
+The complaint behind both: the player had to finish the route and hope.
+
+## 1. Decisions
+
+| Question | Decision | Why |
+|---|---|---|
+| How much to reveal mid-route | **A number and a verdict, never a route** | The best route found is already offered after the finish, and the code says why only then: before it, it is an answer key. Asked for "the best remaining corridor", the game gives the best *score* still reachable instead. |
+| How the tour knows someone is new | **It opens on a bare address** | The game stores nothing, and PLAN has promised that twice. The address gains `?seed=` as soon as a landscape loads, so a reload or a shared link never reopens it. A bookmark to the bare page does, which is the price of storing nothing. |
+| Scope | **Everything in both lists** | |
+
+## 2. The best finish still open
+
+A "projected verdict" read off the current dials would be worthless: every
+dial starts at 100, so it would say "balanced" for most of every route. The
+honest projection needs to know what is still *reachable*, and the balance
+search already knows how to find that.
+
+`js/foresight.js` runs the same search from the highlighted square instead
+of the generation site, carrying the totals already spent, with the line's
+own squares closed. It borrows the search's parts through `Balance.core`
+rather than copying them: `limitsFor` was pulled out of `explore` for this,
+and nothing on the generator's path changed. So on an empty board the
+forecast *is* par, to the decimal, and the self test holds it to that on
+eight seeds.
+
+Two properties make it trustworthy, and both are tested:
+
+* following the best route found keeps the forecast at par on every span to
+  the finish;
+* no span can raise it, across 48 random walks that never step west. The
+  forecast before a span already counted every way that span could be built.
+
+Below `DEFAULT_FLOOR` (55) the figure is not exact, since a state thrown away
+for overspending might have finished a whisker better. So the forecast says
+"below 55", the same rule `Balance.verdict` applies before it quotes a
+number. A second, yes-or-no pass tells "below the floor" apart from "no way
+through at all".
+
+Cost: 3.6 ms on average, 34 ms at worst, measured across 901 forecasts. It
+runs synchronously after every span, drag steps included, and a whole span
+including the repaint came to 45–55 ms in headless Chrome.
+
+`game.js` keeps one reading per route length, so undo hands the previous
+reading back without searching, which matters on a backward drag. Comparing
+the reading before a span with the one after gives the span's **mood**:
+kept, slipped (at least `guidance.slipNotice` points lost), lost (the
+balanced verdict went), or blocked.
+
+## 3. What each item became
+
+| Asked for | Built |
+|---|---|
+| Best remaining corridor | The forecast under the meters: best weakest dial still open, and the verdict it would earn. Deliberately no route. |
+| Projected verdict while dragging | The same forecast, recomputed on every span a drag lays. The status line speaks the moment a span costs something that cannot be got back. |
+| Path colour by zone | Spans that slipped are washed amber with the loss on a badge; a span that lost the verdict is washed red and marked `!`. The pulsing ring on the square in play takes the outlook's colour. Done on the board cells, not in the SVG, so `routeart.js` was not touched. |
+| Local penalty tooltip | Every `cellTypes` entry has a `tip` line, such as "Road crossing: closures and disruption cost community support". The tooltip also lists the square's numbers on all three technologies. Arrows into water, off the map or back into the line are drawn dashed. |
+| First-time tour | `js/tour.js`: five steps, spotlight and card, modal (veil, Tab kept inside, Escape closes, shortcuts swallowed), and a Tour button. |
+| Technology per terrain | Each technology button shows one span on the highlighted square. The legend gains a line on what each technology multiplies. |
+| Keyboard preview | Shift + arrow on the highlighted square: the status line names what lies that way and what a span there costs, and the arrow and the tooltip mark it. Nothing is built. |
+| Explain last move | **Explain**, or `E`: the span's ground, technology and cost, which way it sends the line and onto what, which dials moved, and what the forecast did. The direction sentence matters: a cheap farmland span pointed into designated land is where the points went, and without it the explanation blamed the farmland. |
+| Why a dial is low | **Why?** beside any meter under 100: points lost grouped by ground and technology (`Score.contributions`), worst first, plus a per-dial hint from `dials[*].whyHint`. Hover or focus shows it; a click also speaks it. |
+
+## 4. Layering
+
+`foresight.js` and `advice.js` are pure, load under Node, and have self
+tests. `guidance.js` holds no state and decides no rules: it dresses the
+meters, buttons, board and tooltip that `render.js` built, so there is still
+one of each. Two hooks were added to `render.js` for it:
+`Render.decorateTip`, and `data-dir` on each arrow. Every word is in
+`CONFIG.copy`.
+
+Blind mode (round three) sets `state.blind`: the mood sentences, the span
+tints and the score half of Explain go quiet, and `css/guidance.css` hides
+the forecast and Why?. Terrain numbers stay, because they are land facts.
+
+## 5. The rail budget
+
+At 1280x720 the rail was exactly full before this round. The first version
+of the forecast block pushed it 90 px over. The block now shares one row
+with a short **Explain** button (full label on hover, spoken, and on `E`),
+the line reads "Consent still within reach" while that is true, and the
+technology hint is one line. Measured with round three's changes in: 0 px
+over at 1280x720 and 1366x768, 14 px at 1100x700. When the balanced verdict
+is lost, the forecast line grows to two lines and the rail scrolls by 9 px
+at 1280x720 (measured).
+
+One page-scroll bug turned up while measuring, and it was nobody's line
+alone. A visually hidden label inside the scrolling rail has no positioned
+ancestor, so it was placed against the page. Once the rail overflowed, it
+made the whole page scroll. `.rail { position: relative }` in
+`css/guidance.css` fixes it for every such label.
+
+## 6. Not done, deliberately
+
+* **Ranking the arrows.** Marking which arrow keeps the best finish is the
+  answer key again, one square at a time.
+* **Remembering the tour was seen.** See §1.
+* **Warnings on neutral ground.** Only spans that lose points are marked. A
+  green wash on every good span would cover the map and teach nothing.
+
+## 7. What was checked
+
+* `node js/foresight.js --self-test`: 82 checks. `node js/advice.js
+  --self-test`: 20. The score self test now includes the grouped-points
+  assertion (12). `node js/mapgen.js --self-test` still passes (71).
+* In headless Chrome off `file://`, 26 checks: the forecast equals par on
+  load; the best route found, played through the game, keeps it at par to
+  the finish with no span marked; a direct line through designated land gets
+  lost/slipped marks, the red ring and the status sentence; `E` explains with
+  the direction; Why? lists the designated land first and speaks on click;
+  Shift + → looks without building; the tooltip carries the note and the
+  technology table; arrows carry their direction; no page scroll at
+  1280x720, 1366x768, 1920x1080 or 1100x700; the tour opens on a bare
+  address, walks five steps on Enter, swallows `1` while open, and Escape
+  returns focus to the map; a named landscape never opens it; no page
+  errors. The tour was also checked by eye at 390x844 and 900x700.
+
+## 8. Known limits
+
+* The forecast inherits the search's west-free view. A route that doubles
+  back west can make it read low, and then rise once the line turns east
+  again. Such a rise is shown as "kept", never as good news.
+* A long explanation wraps the status line to two lines, which shrinks the
+  map by a few pixels while it is showing.
+* `js/game.js` is past 1,000 lines with both rounds' hooks in it. The
+  forecast bookkeeping (`forecastNow`, `settleForecast`, `speakMood`,
+  `moodsFor`) is the obvious candidate to move out if it grows again.

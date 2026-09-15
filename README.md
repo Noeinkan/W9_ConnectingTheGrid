@@ -35,6 +35,13 @@ node -e "require('./js/score.js').selfTest()"   # scoring, on a fixed test map
 node js/mapgen.js --self-test                   # generated maps are well formed
 node js/balance.js --seeds 500                  # are they worth playing?
 node js/balance.js SEED                         # one map, in detail
+node js/archetypes.js --self-test               # kinds of landscape; add --calendar
+                                                # to walk every day and week of 2026
+node js/archetypes.js --seeds 300               # how often each kind is accepted
+node js/summary.js                              # the route summary
+node js/foresight.js --self-test                # the best finish still open agrees
+                                                # with par, and never rises
+node js/advice.js --self-test                   # the explanations
 ```
 
 The last two are the interesting ones. `--seeds` sweeps the seed space and
@@ -99,6 +106,33 @@ question.
 they are up, the way they cannot on site — dragging back over the line stops
 rubbing it out, and the only way to change a route is to start again.
 
+**Blind mode.** Off by default. Turned on, every reading of the score — the
+meters, the preview in the tooltip, the forecast — is hidden until the
+connection is energised, and then all of it comes back with the verdict. The
+land and what each kind of ground costs stay visible: those are facts about
+the map, and the route has to be read off them.
+
+**The best finish still open.** Under the meters, after every span, the
+balance search runs again — this time from the end of the line, with the
+squares it already uses closed off — and reports the best weakest dial any
+route onward can still reach, and the verdict that route would earn. On an
+empty board that number is exactly the par figure. It never says *which way*:
+drawn on the map it would be an answer key, which the game only offers once
+the connection is finished.
+
+What it does say is the moment something is lost. A span that takes a point
+or more off the best finish is washed amber on the map with the loss on a
+badge; one that puts the balanced verdict out of reach is washed red, marked
+`!`, and the status line says so straight away. The pulsing ring on the square
+in play takes the same colour. The threshold is `guidance.slipNotice` in
+[js/config.js](js/config.js). See [js/foresight.js](js/foresight.js) for the
+search and [js/advice.js](js/advice.js) for the words.
+
+**The route so far.** One line under the meters: spans built and the fewest
+still needed. Opened, it lists the ground crossed, the technology used, and
+which dial would decide the verdict if the route finished now. Facts only —
+what the route could still become is the forecast's job.
+
 **Verdicts.** When the line reaches the demand centre, the lowest dial picks
 the verdict. If every dial finishes at or above `balancedThreshold` (70), the
 player gets the balanced verdict instead. Two dials tied at the bottom are
@@ -135,6 +169,22 @@ so a corridor that does not add up is never shown at all.
   leaves; it changes with **technology**, which is the choice it exists to
   inform. Which way to go is answered on the arrows, which name the ground
   each one leads into.
+- **Asking why:** **Explain** under the forecast, or the `E` key, says what
+  the last span cost, which way it sent the line and onto what ground, how
+  the dials moved, and what it did to the best finish still open. **Why?**
+  beside any meter that has dropped lists where its points went, grouped by
+  ground and technology. Holding `Shift` with an arrow key on the highlighted
+  square looks that way without building — what the ground is and what a span
+  on it costs on the chosen technology. An arrow into water, off the map or
+  back into the line is drawn dashed: still allowed, and a dead end.
+- **Technology, per square:** each technology button shows what one span on
+  the highlighted square costs on it, as cost / environment / community, and
+  the tooltip on every square lists the same for all three, with a line on
+  what that ground means for a route.
+- **The tour:** five short steps pointing at the square in play, the
+  technology buttons, the meters, the forecast and the demand centre. It opens
+  by itself when the game is opened without a landscape in the address, and
+  from **Tour** at any time.
 - Every cell, meter and move is described for screen readers, and the status
   line is a polite live region so announcements are not cut off mid-sentence.
   The arrows are hidden from screen readers on purpose — the keyboard path
@@ -148,12 +198,17 @@ Every landscape is a short seed, and the seed is now in the address bar.
 |---|---|
 | `index.html?seed=9MA7JX` | that exact landscape, every time |
 | `index.html?daily` | the same landscape as everybody else today |
+| `index.html?weekly` | the same landscape as everybody else this week |
 
 **Today's landscape** is worked out from the UTC date — not the local one,
 which would hand two people in different time zones different landscapes and
 call them both today's. Rerolling a rejected daily is deterministic too, so
 two players do not merely start from the same seed, they walk the same path to
 the same accepted map. There is no server and nothing is stored.
+
+**This week's landscape** works the same way from the ISO week in UTC (weeks
+start on Monday and belong to the year their Thursday falls in), and is always
+one of the particular kinds of landscape below — never plain Open country.
 
 Type a name into the box under the seed line to play any landscape by name,
 and **Copy result** puts the finished dials on the clipboard as plain text.
@@ -162,7 +217,11 @@ that is not a secure context — the text appears on the page, selected, to be
 copied by hand.
 
 Nothing is written to storage. The address bar is the only thing this game
-remembers.
+remembers — which is also how it decides whether to open the tour: a bare
+`index.html` gets the tour, and any address naming a landscape goes straight
+to the map. The seed is added to the address as soon as a landscape is in
+play, so reloading does not bring the tour back; a bookmark to the bare page
+will.
 
 ## Tuning the game
 
@@ -227,11 +286,13 @@ away and another rolled unless all three of these hold:
 | **balanced** | some route scores at or above 70 on *all three* dials |
 | **non-trivial** | the *cheapest* route does not, and fails on environment |
 
-Across 500 seeds the generator accepts about three maps in four (74.6% at the
+Across 500 seeds the generator accepts about two maps in three (66.2% at the
 settings in `config.js`), and the best weakest dial on an accepted map runs
-from 70 to 77.7, median 73.1. Those are the figures the difficulty badge is
-banded against, so re-measure with `node js/balance.js --seeds 500` before
-moving them.
+from 70 to 77.7, median 72.5. That sweep mixes every kind of landscape below
+and judges them all by these three checks alone; the plain kind on its own is
+accepted 78% of the time. The difficulty badge is banded against these
+figures, so re-measure with `node js/balance.js --seeds 500` before moving
+them.
 
 The second matters most. A map where the balanced verdict is unreachable asks
 the player to do something impossible, and it is not obvious from looking at
@@ -253,6 +314,30 @@ to soften these checks. `generator.fallbackSeed` is a seed verified at design
 time and used if every roll is rejected; it is a hostage to every other number
 in that block, so `node js/mapgen.js --self-test` re-checks it rather than
 trusting it.
+
+### Kinds of landscape
+
+A map is one of six kinds, named beside its seed. Which kind comes from the
+seed, by the weights in `CONFIG.archetypes`, so a seed always draws the same
+kind and the same map. Each kind changes some generator numbers and may add
+one test of its own, run by [js/archetypes.js](js/archetypes.js) **on top of**
+the three checks above, never instead of them:
+
+| Kind | Drawn with | Must also show | Accepted |
+|---|---|---|---|
+| Open country | the plain generator | — | 78% |
+| Narrow gap | a gap one row wide, rougher ground, bigger lake | best weakest dial under 73 | 42% |
+| Community pressure | the town standing across the way round | best route cannot keep community at 90 | 31% |
+| Hard crossing | woodland on both river banks | — | 53% |
+| Knife edge | the town across the way round, wooded banks | no dial on the best route above 85 | 33% |
+| The long way round | the plain generator | best route costs at most 1.08x the cheapest | 16% |
+
+A rarely accepted kind gets more rerolls (`maxTries`). Rerolls keep to the
+kind the first roll picked, so the weights mean what they say rather than
+drifting towards the kinds that are easiest to accept. Run
+`node js/archetypes.js --seeds 300` before changing any number there: it
+prints each kind's acceptance rate and the chance a player ends up on the
+fallback seed instead.
 
 A note on `COST_BUDGET`. It is 130, not the 60 the game shipped with, for the
 reason above. The two figures in the scoring self test move with this number;
@@ -304,15 +389,43 @@ which is the whole difference between a wood and four squares of trees.
 `texture` and `density` in [js/config.js](js/config.js) still tune how thickly,
 and are still presentation only.
 
+**Open country is a patchwork of fields**, not bare paper. Cells of open
+ground are grouped into fields of one to a few cells, each traced like any
+other region, given one of four crop colours and, about half the time, rows of
+furrows. Hedges run along some of the boundaries between fields, with the odd
+tree standing in them. Fields are built from whole cells, so every hedge lies
+on a line of the game's own grid: the decoration quietly shows the player the
+squares they are playing on instead of fighting them.
+
+Every symbol — in [js/mapsymbols.js](js/mapsymbols.js) — is lit from the upper
+left, with a shadow on the ground to the lower right, matching the relief under
+raised ground. Canopies and roofs are filled with `currentColor` and each copy
+gets a tint class, so one tree symbol makes a wood of three greens. The two
+ends of the line get pictures of their own: wind turbines at the generation
+site, a small skyline at the demand centre. Both keep clear of the middle band
+of their cell, where the line always runs.
+
 The route on top is one path per run of cells sharing a technology, rather than
 one bar per cell, so a corner comes out as a corner instead of as two
 overlapping rectangles. Every casing is drawn before every body, so a run that
-changes technology cannot have its neighbour's casing painted over it.
+changes technology cannot have its neighbour's casing painted over it. A span
+in the air throws a shadow and has a pylon at each cell; a buried span throws
+none and leaves a band of turned earth instead — the technologies differ in
+the ground, not only in colour. Once the line is energised, current runs along
+it. That drawing lives in [js/routeart.js](js/routeart.js).
 
 Everything is drawn from the seed, never from `Math.random`, so a map looks
 identical on every load and for every player and never shuffles itself under a
 repaint. And all of the above is drawn **once per map** — laying a span
 repaints the route layer and nothing else.
+
+**There are two SVG sheets, one over the other.** The lower one holds the
+landscape and all the filters, and CSS gives it a compositing layer of its own
+(`will-change: transform`), which means the browser paints it once and keeps
+the picture. The upper one holds what moves: the route, the best route found,
+and the turning turbines. Without the split, every span laid and every frame
+of animation would make the browser run the roughening filter again over the
+patch that changed.
 
 **The picture is decoration, and that is load bearing.** The SVG is emitted
 `aria-hidden` and sits *beneath* the grid of real `<button>` elements. Every bit
@@ -345,14 +458,21 @@ pretending otherwise makes both unusable.
 ```
 index.html        markup and script order
 css/style.css     all styling, including the colours of the landscape
+css/guidance.css  the forecast, Why?, span tints, tooltip extras and the tour
 img/*.svg         icons for the legend
 js/config.js      all tunable numbers, the generator settings, all text
 js/rng.js         seeded randomness. No Math.random anywhere in this project
 js/score.js       scoring maths and the self test. No DOM, no state
 js/mapgen.js      a seed in, a landscape out. No DOM, no state
 js/balance.js     is a map worth playing? Also the CLI design tool
-js/mapart.js      draws the landscape as one decorative SVG
-js/render.js      everything that writes to the page. No state, no rules
+js/foresight.js   the best finish still open from the end of the line. No DOM
+js/advice.js      numbers into sentences: explain, why, look ahead. No DOM
+js/mapsymbols.js  the drawings: trees, houses, landmarks, the two ends
+js/mapart.js      lays the landscape out as a decorative SVG
+js/routeart.js    draws the route and the best route found over it
+js/render.js      everything else that writes to the page. No state, no rules
+js/guidance.js    dresses render's meters, buttons, board and tooltip with advice
+js/tour.js        the five-step tour
 js/game.js        state and rules. Never touches the DOM directly
 ```
 

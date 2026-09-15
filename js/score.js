@@ -285,6 +285,52 @@ var Score = (function (CFG) {
     };
   }
 
+  /* Where each dial's points went.
+
+     The route grouped by ground and technology - "three woodland spans on
+     lattice" rather than three separate spans - with how many points of
+     each dial that group took, on the same scale the meters read. A dial
+     that has dropped can then say why in the terms the player chose in:
+     which land, and what it was built on.
+
+     Points are the unclamped share of the budget, so they add up to what
+     the dial lost until the dial hits 0 or 100; past that the meter stops
+     moving and the extra is still listed, which is the honest reading. */
+  function contributions(route) {
+    var b = CFG.budgets;
+    var p = CFG.precision.dials;
+    var groups = {};
+    var order = [];
+
+    for (var i = 0; i < route.length; i++) {
+      var segment = route[i];
+      var key = segment.typeId + '|' + segment.techId;
+      if (!groups[key]) {
+        groups[key] = { typeId: segment.typeId, techId: segment.techId, count: 0, cost: 0, env: 0, comm: 0 };
+        order.push(key);
+      }
+      var scored = scoreSegment(segment.typeId, segment.techId);
+      groups[key].count++;
+      groups[key].cost += scored.cost;
+      groups[key].env += scored.env;
+      groups[key].comm += scored.comm;
+    }
+
+    return order.map(function (key) {
+      var g = groups[key];
+      return {
+        typeId: g.typeId,
+        techId: g.techId,
+        count: g.count,
+        points: {
+          cost: roundTo(-(g.cost / b.COST_BUDGET) * 100, p),
+          env: roundTo((g.env / b.ENV_FLOOR) * 100, p),
+          comm: roundTo((g.comm / b.COMM_FLOOR) * 100, p)
+        }
+      };
+    });
+  }
+
   // The word used to describe a dial value out loud, e.g. "good".
   function bandFor(value) {
     for (var i = 0; i < CFG.bands.length; i++) {
@@ -404,6 +450,16 @@ var Score = (function (CFG) {
     check('totalEnv', b.totals.env, -16);
     check('envDial', b.dials.env, 60);
 
+    // ---- Where the points went ------------------------------------------
+    // The same route as assertion 2, grouped. The two designated land spans
+    // took 40 environment points between them: 2 x -8 = -16, of a floor of 40.
+    say('');
+    say('Assertion 2b: the points assertion 2 lost, grouped by ground');
+    var groups = contributions(routeOf(repeat('farmland', 12).concat(repeat('sssi', 2)), 'lattice'));
+    check('two groups', groups.length, 2);
+    check('designated land count', groups[1].count, 2);
+    check('designated land environment points', groups[1].points.env, -40);
+
     // ---- Map sanity -----------------------------------------------------
     /* Checked against a map written out here rather than whatever the
        generator last produced. A test that changes its own inputs every
@@ -459,6 +515,7 @@ var Score = (function (CFG) {
     costOf: costOf,
     scoreSegment: scoreSegment,
     scoreRoute: scoreRoute,
+    contributions: contributions,
     dialsFor: dialsFor,
     bandFor: bandFor,
     lowestDial: lowestDial,

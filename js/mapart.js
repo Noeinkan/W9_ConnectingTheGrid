@@ -26,12 +26,16 @@
    hidden and the buttons draw their own borders again.
 
    Everything is drawn ONCE per map. Laying a piece repaints the route layer
-   and nothing else, so none of the filter work below is on the hot path.
+   and nothing else, and the route lives on a second SVG laid over this
+   one, so none of the filter work below is on the hot path.
+
+   The symbols themselves - trees, houses, landmarks, the two ends of the
+   line - are drawn in js/mapsymbols.js. This file decides where they go.
 
    Exposes one global: MapArt.
    ========================================================================= */
 
-var MapArt = (function (CFG, Rng) {
+var MapArt = (function (CFG, Rng, MapSymbols) {
   'use strict';
 
   var NS = 'http://www.w3.org/2000/svg';
@@ -77,14 +81,37 @@ var MapArt = (function (CFG, Rng) {
      small ones, spilling a little over the edges of their square, read as a
      wood - and a run of squares reads as one wood rather than four.
 
+     'symbols' is picked from at random, per copy. 'tints' is how many
+     colour variants the stylesheet defines for that ground, as
+     .art-tint-<ground>-0, -1, ... - see js/mapsymbols.js on currentColor.
+
      'density' in CONFIG then scales the count, so the tuning knob that
      already exists still means what it says. */
   var COVER = {
-    woodland: { symbol: 'tree', count: [5, 7], scale: [0.22, 0.34] },
-    hilly: { symbol: 'hill', count: [3, 4], scale: [0.30, 0.44] },
-    rocky: { symbol: 'rock', count: [5, 7], scale: [0.15, 0.26] },
-    sssi: { symbol: 'reed', count: [6, 9], scale: [0.18, 0.28] },
-    settlement: { symbol: 'house', count: [3, 4], scale: [0.22, 0.32] }
+    woodland: { symbols: ['tree', 'tree', 'pine'], tints: 3, count: [5, 7], scale: [0.24, 0.36] },
+    hilly: { symbols: ['hill'], count: [3, 4], scale: [0.36, 0.5] },
+    rocky: { symbols: ['rock'], count: [4, 6], scale: [0.18, 0.28] },
+    sssi: { symbols: ['reed'], count: [6, 9], scale: [0.18, 0.28] },
+    settlement: { symbols: ['house'], tints: 3, count: [3, 4], scale: [0.26, 0.36] },
+    water: { symbols: ['ripple'], count: [3, 4], scale: [0.36, 0.46] }
+  };
+
+  /* The open country between the regions, drawn as a patchwork of fields.
+
+     'merge' is the chance a cell joins the field to its west (or, failing
+     that, to its north) rather than starting one of its own, so fields come
+     in more than one size. 'tints' and 'furrows' are how many fill colours
+     and crop-row directions there are to choose from; 'hedge' is the chance
+     a boundary between two fields is hedged, and 'hedgeTree' the chance a
+     hedge has a tree standing in it. */
+  var FIELDS = {
+    merge: 0.3,
+    mergeNorth: 0.16,
+    tints: 4,
+    furrows: [4, 94, 52],
+    hedge: 0.5,
+    hedgeTree: 0.28,
+    round: 12
   };
 
   /* Ground whose meaning must not rest on its colour alone (WCAG 2.2 AA,
@@ -225,14 +252,17 @@ var MapArt = (function (CFG, Rng) {
      edge of the map only move along it, so the map stays a rectangle. */
   function wobble(loop, salt, cols, rows) {
     return loop.map(function (point) {
-      var x = point[0];
-      var y = point[1];
-      var ox = (Rng.hash2(x, y, salt) - 0.5) * 2 * WOBBLE;
-      var oy = (Rng.hash2(x, y, salt + 1013) - 0.5) * 2 * WOBBLE;
-      if (x === 0 || x === cols) { ox = 0; }
-      if (y === 0 || y === rows) { oy = 0; }
-      return [x * U + ox, y * U + oy];
+      return corner(point[0], point[1], salt, cols, rows);
     });
+  }
+
+  // One lattice corner, moved. Shared by region outlines, fields and hedges.
+  function corner(x, y, salt, cols, rows) {
+    var ox = (Rng.hash2(x, y, salt) - 0.5) * 2 * WOBBLE;
+    var oy = (Rng.hash2(x, y, salt + 1013) - 0.5) * 2 * WOBBLE;
+    if (x === 0 || x === cols) { ox = 0; }
+    if (y === 0 || y === rows) { oy = 0; }
+    return [x * U + ox, y * U + oy];
   }
 
   /* Rounds every corner of a closed loop.
@@ -297,101 +327,130 @@ var MapArt = (function (CFG, Rng) {
   }
 
   /* ---------------------------------------------------------------------
-     The symbols scattered over the ground
+     Fields and hedges
      ---------------------------------------------------------------------
-     Drawn here as shapes rather than reused from img/, because these are
-     map furniture and those are interface icons. An icon is a flat outline
-     that has to read at 24 pixels in a legend; a tree on a map wants a
-     filled canopy that can be turned, resized and tinted to sit in its
-     wood. The legend still uses img/, so the two never need to match.
+     Open country used to be the bare paper, and a wide stretch of it read
+     as an empty rectangle rather than as farmland. It is now split into
+     fields, each a slightly different crop, some of them ploughed in rows,
+     with hedges along some of the boundaries.
+
+     The fields are built out of whole cells, so every hedge runs along a
+     line of the game's own grid. That is on purpose: the hedges quietly
+     show the player the squares they are playing on, where a pattern that
+     ignored the grid would fight it.
      ------------------------------------------------------------------- */
 
-  function defineSymbols(defs) {
-    function symbol(id, viewBox) {
-      return append(defs, 'symbol', { id: id, viewBox: viewBox, overflow: 'visible' });
+  /* Which cells belong to which field. Walked in reading order, so a cell's
+     west and north neighbours are already decided when it is reached. */
+  function planFields(cols, rows, isOpen, salt) {
+    var plan = [];
+    var fields = [];
+
+    for (var row = 0; row < rows; row++) {
+      plan.push([]);
+      for (var col = 0; col < cols; col++) {
+        if (!isOpen(col, row)) { plan[row].push(null); continue; }
+
+        var west = col > 0 ? plan[row][col - 1] : null;
+        var north = row > 0 ? plan[row - 1][col] : null;
+        var roll = Rng.hash2(col, row, salt + 401);
+
+        if (west && roll < FIELDS.merge) { plan[row].push(west); continue; }
+        if (north && roll > 1 - FIELDS.mergeNorth) { plan[row].push(north); continue; }
+
+        var field = {
+          id: fields.length,
+          tint: Math.floor(Rng.hash2(col, row, salt + 409) * FIELDS.tints),
+          // About half the fields are left as grass, with no rows in it.
+          furrow: Math.floor(Rng.hash2(col, row, salt + 419) * FIELDS.furrows.length * 2) -
+                  FIELDS.furrows.length
+        };
+        fields.push(field);
+        plan[row].push(field);
+      }
     }
 
-    var tree = symbol('tree', '0 0 100 100');
-    append(tree, 'path', { d: 'M46 96h8V64h-8z', class: 'art-trunk' });
-    append(tree, 'path', {
-      d: 'M50 6c14 0 25 11 25 25 0 4-1 8-3 11 8 4 13 12 13 21 0 13-11 24-25 24H40' +
-         'c-14 0-25-11-25-24 0-9 5-17 13-21-2-3-3-7-3-11 0-14 11-25 25-25z',
-      class: 'art-canopy'
+    return { plan: plan, fields: fields };
+  }
+
+  function drawFields(parent, cols, rows, layout, salt) {
+    var group = append(parent, 'g', { class: 'art-fields' });
+
+    layout.fields.forEach(function (field) {
+      var loops = traceRegion(cols, rows, function (col, row) {
+        return layout.plan[row][col] === field;
+      });
+      if (!loops.length) { return; }
+
+      var d = loops.map(function (loop) {
+        return roundedLoop(wobble(loop, salt, cols, rows), FIELDS.round);
+      }).join(' ');
+
+      append(group, 'path', { class: 'art-field art-field-' + field.tint, d: d, 'fill-rule': 'evenodd' });
+      if (field.furrow >= 0) {
+        append(group, 'path', {
+          class: 'art-furrows', d: d, 'fill-rule': 'evenodd',
+          fill: 'url(#art-furrow-' + field.furrow + ')'
+        });
+      }
     });
+  }
 
-    var hill = symbol('hill', '0 0 100 100');
-    append(hill, 'path', { d: 'M4 84c14 0 20-34 34-34s16 22 26 22 12-14 22-14v26z', class: 'art-hill-back' });
-    append(hill, 'path', { d: 'M2 86c16 0 24-40 40-40s22 40 40 40z', class: 'art-hill' });
-    append(hill, 'path', { d: 'M30 62c5-8 9-12 12-12s7 4 12 12c-8-4-16-4-24 0z', class: 'art-hill-cap' });
+  /* A hedge along some of the boundaries between two different fields.
+     Stopped short at both ends, so four hedges meeting at a corner leave a
+     gateway rather than a perfect cross. Returns where trees stand in them,
+     so they can be planted with everything else and overlap in order. */
+  function drawHedges(parent, cols, rows, layout, salt) {
+    var group = append(parent, 'g', { class: 'art-hedges' });
+    var trees = [];
+    var d = '';
 
-    var rock = symbol('rock', '0 0 100 100');
-    append(rock, 'path', { d: 'M16 82 32 34l22-8 26 22 6 34z', class: 'art-rock' });
-    append(rock, 'path', { d: 'M32 34l22-8 8 30-30 4z', class: 'art-rock-face' });
+    function hedge(ax, ay, bx, by) {
+      var a = corner(ax, ay, salt, cols, rows);
+      var b = corner(bx, by, salt, cols, rows);
+      var dx = b[0] - a[0];
+      var dy = b[1] - a[1];
+      var length = Math.sqrt(dx * dx + dy * dy) || 1;
+      var trim = 9 / length;
+      var bow = (Rng.hash2(ax + bx, ay + by, salt + 431) - 0.5) * 12;
 
-    var reed = symbol('reed', '0 0 100 100');
-    append(reed, 'path', {
-      d: 'M30 94V44M50 96V30M70 94V48',
-      class: 'art-stem', fill: 'none'
-    });
-    append(reed, 'path', {
-      d: 'M30 50c-8-4-9-14-4-19 6 2 9 12 4 19zM50 34c-9-5-10-16-4-22 7 3 10 15 4 22z' +
-         'M70 54c8-4 9-14 4-19-6 2-9 12-4 19z',
-      class: 'art-frond'
-    });
+      var from = [a[0] + dx * trim, a[1] + dy * trim];
+      var to = [b[0] - dx * trim, b[1] - dy * trim];
+      var bend = [(a[0] + b[0]) / 2 - dy / length * bow, (a[1] + b[1]) / 2 + dx / length * bow];
 
-    var house = symbol('house', '0 0 100 100');
-    append(house, 'path', { d: 'M20 92V52h60v40z', class: 'art-wall' });
-    append(house, 'path', { d: 'M12 54 50 22l38 32z', class: 'art-roof' });
-    append(house, 'path', { d: 'M42 92V70h16v22z', class: 'art-door' });
+      d += 'M' + n(from[0]) + ' ' + n(from[1]) +
+           'Q' + n(bend[0]) + ' ' + n(bend[1]) + ' ' + n(to[0]) + ' ' + n(to[1]);
 
-    /* Landmarks, each on a pale disc so it reads as a place rather than as
-       ground. The three shapes are deliberately nothing like each other -
-       a building with masts, a factory roofline, a leaf. An earlier set had
-       the substation and the connection customer both drawn as a house with
-       something inside it, and at the size these appear on screen they were
-       impossible to tell apart. */
-    function landmark(id, ring) {
-      var mark = symbol(id, '0 0 100 100');
-      append(mark, 'circle', { cx: 50, cy: 50, r: 38, class: 'art-disc art-disc-' + ring });
-      return mark;
+      if (Rng.hash2(ax + bx, ay + by, salt + 433) < FIELDS.hedgeTree) {
+        var along = 0.3 + Rng.hash2(ax + bx, ay + by, salt + 439) * 0.4;
+        trees.push([a[0] + dx * along, a[1] + dy * along]);
+      }
     }
 
-    // A switching compound: a low building with two masts standing over it.
-    var substation = landmark('mark-substation', 'substation');
-    append(substation, 'path', { d: 'M26 82V56h48v26z', class: 'art-mark' });
-    append(substation, 'path', {
-      d: 'M31 56V28h5v28zM64 56V28h5v28zM24 34h19v4H24zM57 34h19v4H57z',
-      class: 'art-mark'
-    });
-    append(substation, 'path', { d: 'M54 58 40 78h9l-4 13 15-21h-9z', class: 'art-mark-hot' });
+    function between(here, there) {
+      return here && there && here !== there;
+    }
 
-    // A site waiting for a connection: a works, with a sawtooth roof.
-    var customer = landmark('mark-customer', 'customer');
-    append(customer, 'path', {
-      d: 'M22 82V56l12-10v10l12-10v10l12-10v10l12-10v36z', class: 'art-mark'
-    });
-    append(customer, 'path', { d: 'M64 40h8V20h-8z', class: 'art-mark' });
-    append(customer, 'circle', { cx: 68, cy: 16, r: 6, class: 'art-mark-hot' });
+    for (var row = 0; row < rows; row++) {
+      for (var col = 0; col < cols; col++) {
+        var here = layout.plan[row][col];
+        // Keyed on the edge itself, so the two cells either side agree.
+        if (col + 1 < cols && between(here, layout.plan[row][col + 1]) &&
+            Rng.hash2(col * 2 + 1, row * 2, salt + 421) < FIELDS.hedge) {
+          hedge(col + 1, row, col + 1, row + 1);
+        }
+        if (row + 1 < rows && between(here, layout.plan[row + 1][col]) &&
+            Rng.hash2(col * 2, row * 2 + 1, salt + 421) < FIELDS.hedge) {
+          hedge(col, row + 1, col + 1, row + 1);
+        }
+      }
+    }
 
-    // Land offered by the community: a leaf.
-    var benefit = landmark('mark-benefit', 'benefit');
-    append(benefit, 'path', {
-      d: 'M24 80C22 50 44 26 78 22c4 32-16 56-46 58z', class: 'art-mark'
-    });
-    append(benefit, 'path', {
-      d: 'M28 78C44 62 58 44 72 28', class: 'art-mark-vein', fill: 'none'
-    });
-
-    /* Connection funding: a coin with a line through it. Round, where every
-       other landmark is built out of straight edges, because it is the only
-       one that is not a place on the ground - it is money. */
-    var grant = landmark('mark-grant', 'grant');
-    append(grant, 'circle', { cx: 50, cy: 50, r: 22, class: 'art-mark' });
-    append(grant, 'circle', { cx: 50, cy: 50, r: 14, class: 'art-mark-hot' });
-    append(grant, 'path', {
-      d: 'M50 36v28M43 43h11a5 5 0 0 1 0 10h-8a5 5 0 0 0 0 10h11',
-      class: 'art-mark-vein', fill: 'none'
-    });
+    if (d) {
+      append(group, 'path', { class: 'art-hedge', d: d, fill: 'none' });
+      append(group, 'path', { class: 'art-hedge-bush', d: d, fill: 'none' });
+    }
+    return trees;
   }
 
   /* ---------------------------------------------------------------------
@@ -444,6 +503,21 @@ var MapArt = (function (CFG, Rng) {
       patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(-45)'
     });
     append(water, 'line', { x1: 0, y1: 0, x2: 0, y2: 14, class: 'art-hatch-water' });
+
+    // Crop rows, one pattern per direction a field can be ploughed in.
+    FIELDS.furrows.forEach(function (angle, index) {
+      var rows = append(defs, 'pattern', {
+        id: 'art-furrow-' + index, width: 12, height: 12,
+        patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(' + angle + ')'
+      });
+      append(rows, 'line', { x1: 6, y1: 0, x2: 6, y2: 12, class: 'art-furrow' });
+    });
+
+    /* The edges of the sheet, a shade darker than the middle, the way a
+       printed map is. It pulls the eye in towards the play. */
+    var vignette = append(defs, 'radialGradient', { id: 'art-vignette', cx: '50%', cy: '50%', r: '72%' });
+    append(vignette, 'stop', { offset: '55%', class: 'art-vignette-in' });
+    append(vignette, 'stop', { offset: '100%', class: 'art-vignette-out' });
   }
 
   /* ---------------------------------------------------------------------
@@ -461,32 +535,56 @@ var MapArt = (function (CFG, Rng) {
 
     function typeAt(col, row) { return grid[row][col]; }
 
-    var root = svg('svg', {
-      class: 'art',
-      viewBox: '0 0 ' + (cols * U) + ' ' + (rowCount * U),
-      preserveAspectRatio: 'none',
-      'aria-hidden': 'true',
-      focusable: 'false'
-    });
+    function sheet(className) {
+      return svg('svg', {
+        class: className,
+        viewBox: '0 0 ' + (cols * U) + ' ' + (rowCount * U),
+        preserveAspectRatio: 'none',
+        'aria-hidden': 'true',
+        focusable: 'false'
+      });
+    }
+
+    /* Two sheets, one exactly over the other. The lower carries everything
+       that never changes once the map is built, filters and all. The upper
+       carries what moves: the route, redrawn on every span, and the turning
+       wind turbines. The stylesheet gives the lower sheet a compositing
+       layer of its own, so nothing that happens on the upper one ever makes
+       the browser run the filters again. */
+    var root = sheet('art');
+    var overlay = sheet('art art-overlay');
 
     var defs = append(root, 'defs');
-    defineSymbols(defs);
+    MapSymbols.define(defs);
     defineFilters(defs, salt);
 
-    // --- 1. paper -------------------------------------------------------
-    append(root, 'rect', { class: 'art-base', x: 0, y: 0, width: cols * U, height: rowCount * U });
-    append(root, 'rect', {
-      class: 'art-mottle', x: 0, y: 0, width: cols * U, height: rowCount * U,
-      filter: 'url(#art-mottle)'
-    });
-    append(root, 'rect', {
-      class: 'art-grain', x: 0, y: 0, width: cols * U, height: rowCount * U,
-      filter: 'url(#art-paper)'
-    });
+    function sheetRect(className, filter) {
+      var attributes = { class: className, x: 0, y: 0, width: cols * U, height: rowCount * U };
+      if (filter) { attributes.filter = 'url(#' + filter + ')'; }
+      return attributes;
+    }
 
-    // --- 2. terrain, with its relief underneath -------------------------
-    var relief = append(root, 'g', { class: 'art-relief' });
+    // --- 1. paper -------------------------------------------------------
+    append(root, 'rect', sheetRect('art-base'));
+
+    /* --- 2. terrain ------------------------------------------------------
+       One group, one pass of the roughening filter over all of it: the
+       fields, then the paper texture laid over them, then the shadows of
+       raised ground, then the ground itself. The texture sits under the
+       regions rather than over the whole map so woods and water keep their
+       own colour. */
     var land = append(root, 'g', { class: 'art-land', filter: 'url(#art-rough)' });
+
+    var fieldLayout = planFields(cols, rowCount, function (col, row) {
+      return REGIONS.indexOf(typeAt(col, row)) < 0;
+    }, salt);
+    drawFields(land, cols, rowCount, fieldLayout, salt);
+    var hedgeTrees = drawHedges(land, cols, rowCount, fieldLayout, salt);
+
+    append(land, 'rect', sheetRect('art-mottle', 'art-mottle'));
+    append(land, 'rect', sheetRect('art-grain', 'art-paper'));
+
+    var relief = append(land, 'g', { class: 'art-relief' });
 
     REGIONS.forEach(function (typeId) {
       var loops = traceRegion(cols, rowCount, function (col, row) {
@@ -542,10 +640,16 @@ var MapArt = (function (CFG, Rng) {
       return throughPoints(points);
     }
 
+    /* The river: a deeper channel down the middle of its bed, and broken
+       glints either side of it for the light on moving water. An earlier
+       drawing ran one unbroken pale line down the centre, which read as a
+       pipe rather than as a river. */
     var riverLine = centreLine(features && features.river, true);
     if (riverLine) {
       append(ways, 'path', { class: 'art-river-deep', d: riverLine, fill: 'none' });
-      append(ways, 'path', { class: 'art-river-glint', d: riverLine, fill: 'none' });
+      append(ways, 'path', { class: 'art-river-core', d: riverLine, fill: 'none' });
+      append(ways, 'path', { class: 'art-river-glint', d: riverLine, fill: 'none', transform: 'translate(-9 0)' });
+      append(ways, 'path', { class: 'art-river-glint art-river-glint-2', d: riverLine, fill: 'none', transform: 'translate(9 0)' });
     }
 
     var roadLine = centreLine(features && features.road, true);
@@ -585,21 +689,34 @@ var MapArt = (function (CFG, Rng) {
           var x = (col + 0.5) * U + (Rng.hash2(col, row, pick + 7) - 0.5) * U * 0.92;
           var y = (row + 0.5) * U + (Rng.hash2(col, row, pick + 13) - 0.5) * U * 0.86;
 
-          planted.push({
-            y: y,
-            symbol: plan.symbol,
-            x: n(x - size / 2), top: n(y - size / 2), size: n(size)
-          });
+          var which = plan.symbols[Math.floor(Rng.hash2(col, row, pick + 19) * plan.symbols.length)];
+          var tint = plan.tints
+            ? 'art-tint-' + typeId + '-' + Math.floor(Rng.hash2(col, row, pick + 23) * plan.tints)
+            : '';
+
+          planted.push({ x: x, y: y, size: size, symbol: which, tint: tint });
         }
       }
     }
 
+    // The odd tree standing in a hedge, small, in one of the wood's greens.
+    hedgeTrees.forEach(function (at, index) {
+      var size = U * (0.2 + Rng.hash2(index, 3, salt + 443) * 0.08);
+      planted.push({
+        x: at[0], y: at[1] - size * 0.3, size: size, symbol: 'tree',
+        tint: 'art-tint-woodland-' + Math.floor(Rng.hash2(index, 5, salt + 443) * 3)
+      });
+    });
+
     planted.sort(function (a, b) { return a.y - b.y; });
     planted.forEach(function (item) {
-      append(cover, 'use', {
+      var attributes = {
         href: '#' + item.symbol,
-        x: item.x, y: item.top, width: item.size, height: item.size
-      });
+        x: n(item.x - item.size / 2), y: n(item.y - item.size / 2),
+        width: n(item.size), height: n(item.size)
+      };
+      if (item.tint) { attributes.class = item.tint; }
+      append(cover, 'use', attributes);
     });
 
     // --- 5. landmarks ---------------------------------------------------
@@ -627,17 +744,27 @@ var MapArt = (function (CFG, Rng) {
       append(lines, 'line', { x1: 0, y1: row * U, x2: cols * U, y2: row * U });
     }
 
-    /* --- 7. the route --------------------------------------------------
-       Both left empty. render.js owns everything in them and repaints them
-       as the game goes; nothing else in this file is touched again.
+    // The fill goes on as an attribute: a url() written in the stylesheet
+    // would be looked for relative to css/, not to this page.
+    append(root, 'rect', sheetRect('art-vignette')).setAttribute('fill', 'url(#art-vignette)');
+
+    /* --- 7. the two ends, on the upper sheet ----------------------------
+       Up here because the turbines turn; see the note on the two sheets. */
+    var ends = append(overlay, 'g', { class: 'art-ends' });
+    MapSymbols.drawGenerationSite(ends, CFG.start.col * U, CFG.start.row * U);
+    MapSymbols.drawDemandCentre(ends, CFG.end.col * U, CFG.end.row * U);
+
+    /* --- 8. the route --------------------------------------------------
+       Both left empty. js/routeart.js draws everything in them and repaints
+       them as the game goes; nothing else in this file is touched again.
 
        The ghost comes first so it sits UNDER the player's own line: it is
        shown after the game is over, and the route the player actually built
        is still the one that should read first. */
-    var ghost = append(root, 'g', { class: 'art-ghost' });
-    var route = append(root, 'g', { class: 'art-route' });
+    var ghost = append(overlay, 'g', { class: 'art-ghost' });
+    var route = append(overlay, 'g', { class: 'art-route' });
 
-    return { svg: root, route: route, ghost: ghost };
+    return { svg: root, overlay: overlay, route: route, ghost: ghost };
   }
 
   return {
@@ -650,7 +777,9 @@ var MapArt = (function (CFG, Rng) {
   };
 
 }(typeof CONFIG !== 'undefined' ? CONFIG : require('./config.js'),
-  typeof Rng !== 'undefined' ? Rng : require('./rng.js')));
+  typeof Rng !== 'undefined' ? Rng : require('./rng.js'),
+  // Only needed to draw, which needs a document; under Node there is neither.
+  typeof MapSymbols !== 'undefined' ? MapSymbols : null));
 
 
 if (typeof module !== 'undefined' && module.exports) {

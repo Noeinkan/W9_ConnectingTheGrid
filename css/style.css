@@ -79,6 +79,28 @@
   --brand-art-relief:      rgb(46 58 34 / 0.20);
   --brand-art-grid:        rgb(70 82 52 / 0.16);
 
+  /* Open country: four crops close enough to the farmland colour that the
+     patchwork stays in the background, and the hedges between them. */
+  --brand-art-field-0:     #e4ecc0;
+  --brand-art-field-1:     #ece8bd;
+  --brand-art-field-2:     #d8e5b0;
+  --brand-art-field-3:     #e9eed3;
+  --brand-art-furrow:      rgb(96 110 52 / 0.1);
+  --brand-art-hedge:       #7f9f58;
+  --brand-art-hedge-bush:  #5f8a45;
+
+  /* Second and third tints, so a wood or a street is not one colour. */
+  --brand-art-canopy-3:    #5b9147;
+  --brand-art-roof-2:      #9b5846;
+  --brand-art-roof-3:      #7c6a60;
+  --brand-art-flower:      #9f72b8;
+  --brand-art-shadow:      rgb(30 44 20 / 0.24);
+
+  /* The two ends of the line. */
+  --brand-art-city:        #cdc3b4;
+  --brand-art-window:      #f1d67e;
+  --brand-art-turbine:     #f6f6f2;
+
   /* Paper white for map furniture - pins, discs, casings. Deliberately a
      literal colour, not a theme token: it must not flip in dark mode. */
   --brand-map-paper:       #fdfdfb;
@@ -536,7 +558,13 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
 }
 
 .art-layer { overflow: hidden; pointer-events: none; }
-.art { display: block; width: 100%; height: 100%; }
+.art { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
+
+/* The landscape sheet gets a compositing layer of its own, so the browser
+   paints it once and keeps the picture. Without this, anything that moves
+   over the map - the route, the turbines, the pulsing target square - makes
+   it run the roughening filters again for the patch that changed. */
+.art:not(.art-overlay) { will-change: transform; }
 
 .board {
   display: grid;
@@ -640,14 +668,40 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
    ---------------------------------------------------------------------- */
 .art-base  { fill: var(--brand-land-farmland); }
 .art-grain  { fill: #000; opacity: 0.05; mix-blend-mode: multiply; }
-/* A coarser variation over the whole sheet, so a wide stretch of open
-   farmland reads as fields rather than as an empty rectangle. */
-.art-mottle { fill: #4a5c2a; opacity: 0.2; mix-blend-mode: multiply; }
+/* A coarser variation over the whole sheet, so neighbouring fields of the
+   same crop still differ a little from one end to the other. */
+.art-mottle { fill: #4a5c2a; opacity: 0.16; mix-blend-mode: multiply; }
+
+/* The patchwork of open country. The fills are deliberately close to one
+   another: the fields are background, and the landmarks and the route
+   have to stand clear of them. */
+.art-field-0 { fill: var(--brand-art-field-0); }
+.art-field-1 { fill: var(--brand-art-field-1); }
+.art-field-2 { fill: var(--brand-art-field-2); }
+.art-field-3 { fill: var(--brand-art-field-3); }
+.art-furrow  { stroke: var(--brand-art-furrow); stroke-width: 3; }
+
+/* A hedge is a thin line with a row of bushes along it: the same path
+   twice, the second stroked as round dots. */
+.art-hedge      { stroke: var(--brand-art-hedge); stroke-width: 4; stroke-linecap: round; opacity: 0.6; }
+.art-hedge-bush { stroke: var(--brand-art-hedge-bush); stroke-width: 8; stroke-linecap: round; stroke-dasharray: 0 11; opacity: 0.65; }
 
 /* Each region names its own brand token inline, from js/mapart.js, so that
    adding a kind of ground does not mean adding a rule here. The tokens
-   themselves still live at the top of this file. */
+   themselves still live at the top of this file.
+
+   The edges below are optional, per ground: a darker line where a wood or
+   a river bank meets the fields gives each patch a shape of its own. */
 .art-region     { stroke: none; }
+.art-woodland   { stroke: #5a9447; stroke-width: 4; }
+.art-hilly      { stroke: rgb(98 140 58 / 0.5); stroke-width: 3; }
+.art-rocky      { stroke: rgb(128 104 70 / 0.45); stroke-width: 3; }
+.art-settlement { stroke: rgb(160 100 76 / 0.45); stroke-width: 3; }
+.art-river      { stroke: #69b4dc; stroke-width: 4; }
+.art-water      { stroke: #3b7eab; stroke-width: 4; }
+/* Designated land keeps the dashed boundary a planning map draws round a
+   protected site - one more thing that says so without relying on colour. */
+.art-sssi       { stroke: #c29a36; stroke-width: 4; stroke-dasharray: 18 11; stroke-linecap: round; }
 
 /* Raised ground gets a shadow to the south east. It is the one thing that
    makes a hill read as standing up rather than lying flat. */
@@ -658,38 +712,92 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
 .art-hatch-sssi  { stroke: rgb(120 88 0 / 0.16); stroke-width: 2.5; }
 .art-hatch-water { stroke: rgb(255 255 255 / 0.26); stroke-width: 2.5; }
 
-.art-river-deep  { stroke: var(--brand-art-river); stroke-width: 26; stroke-linecap: round; stroke-linejoin: round; opacity: 0.6; }
-.art-river-glint { stroke: var(--brand-art-glint); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; opacity: 0.65; }
-.art-road-case   { stroke: var(--brand-art-road-case); stroke-width: 25; stroke-linecap: round; stroke-linejoin: round; }
-.art-road-top    { stroke: var(--brand-art-road); stroke-width: 17; stroke-linecap: round; stroke-linejoin: round; }
+.art-river-deep, .art-river-core, .art-river-glint,
+.art-road-case, .art-road-top { stroke-linecap: round; stroke-linejoin: round; }
+.art-river-deep  { stroke: var(--brand-art-river); stroke-width: 42; opacity: 0.22; }
+.art-river-core  { stroke: var(--brand-art-river); stroke-width: 18; opacity: 0.36; }
+.art-river-glint { stroke: var(--brand-art-glint); stroke-width: 3.5; stroke-dasharray: 16 44; opacity: 0.9; }
+.art-river-glint-2 { stroke-dasharray: 10 52; stroke-dashoffset: 30; }
+.art-road-case   { stroke: var(--brand-art-road-case); stroke-width: 25; }
+.art-road-top    { stroke: var(--brand-art-road); stroke-width: 17; }
 .art-road-dash   { stroke: var(--brand-art-road-case); stroke-width: 2.4; stroke-dasharray: 13 11; stroke-linecap: butt; opacity: 0.75; }
 
-.art-canopy    { fill: var(--brand-art-canopy); }
-.art-trunk     { fill: var(--brand-art-trunk); }
-.art-hill      { fill: var(--brand-art-hill); stroke: rgb(50 70 30 / 0.30); stroke-width: 3.5; }
-.art-hill-back { fill: var(--brand-art-hill-2); }
-.art-hill-cap  { fill: var(--brand-map-paper); opacity: 0.5; }
-.art-rock      { fill: var(--brand-art-rock); stroke: rgb(60 48 30 / 0.25); stroke-width: 3; }
-.art-rock-face { fill: var(--brand-art-rock-2); }
-.art-stem      { stroke: var(--brand-art-canopy-2); stroke-width: 5; stroke-linecap: round; }
-.art-frond     { fill: var(--brand-art-canopy-2); }
-.art-wall      { fill: var(--brand-art-wall); }
-.art-roof      { fill: var(--brand-art-roof); }
-.art-door      { fill: var(--brand-art-trunk); }
+/* The symbols, from js/mapsymbols.js. All lit from the upper left. */
+.art-ground-shadow { fill: var(--brand-art-shadow); }
+.art-canopy        { fill: currentColor; }
+.art-canopy-shade  { fill: rgb(10 30 10 / 0.2); }
+.art-canopy-light  { fill: rgb(255 255 240 / 0.22); }
+.art-trunk         { fill: var(--brand-art-trunk); }
+.art-hill          { fill: var(--brand-art-hill); }
+.art-hill-back     { fill: var(--brand-art-hill-2); }
+.art-hill-line     { stroke: rgb(50 80 30 / 0.3); stroke-width: 3; stroke-linecap: round; }
+.art-rock          { fill: var(--brand-art-rock); stroke: rgb(60 48 30 / 0.25); stroke-width: 3; }
+.art-rock-face     { fill: var(--brand-art-rock-2); }
+.art-rock-line     { stroke: rgb(60 48 30 / 0.3); stroke-width: 2.5; stroke-linecap: round; }
+.art-stem          { stroke: var(--brand-art-canopy-2); stroke-width: 5; stroke-linecap: round; }
+.art-frond         { fill: var(--brand-art-canopy-2); }
+.art-flower        { fill: var(--brand-art-flower); }
+.art-wall          { fill: var(--brand-art-wall); }
+.art-wall-shade    { fill: rgb(60 40 30 / 0.12); }
+.art-roof          { fill: currentColor; }
+.art-roof-shade    { fill: rgb(40 20 10 / 0.18); }
+.art-chimney       { fill: var(--brand-art-roof-2); }
+.art-door          { fill: var(--brand-art-trunk); }
+.art-window        { fill: #7d93a3; }
+.art-ripple        { stroke: rgb(255 255 255 / 0.5); stroke-width: 5; stroke-linecap: round; }
+
+/* The tints a copy of a symbol can take, set as `color` and picked up by
+   currentColor. Named .art-tint-<ground>-<n>; COVER in js/mapart.js says
+   how many each ground has. */
+.art-cover               { color: var(--brand-art-canopy); }
+.art-tint-woodland-0     { color: var(--brand-art-canopy); }
+.art-tint-woodland-1     { color: var(--brand-art-canopy-2); }
+.art-tint-woodland-2     { color: var(--brand-art-canopy-3); }
+.art-tint-settlement-0   { color: var(--brand-art-roof); }
+.art-tint-settlement-1   { color: var(--brand-art-roof-2); }
+.art-tint-settlement-2   { color: var(--brand-art-roof-3); }
 
 /* Each landmark keeps its own ring colour, so they read apart at a glance
    and still read apart with the shape alone if colour is gone. */
+.art-disc-shadow     { fill: rgb(20 30 10 / 0.2); }
 .art-disc            { fill: var(--brand-map-paper); stroke: rgb(44 44 40 / 0.7); stroke-width: 4; }
 .art-disc-substation { stroke: #4a4a58; }
 .art-disc-customer   { stroke: #6b4f9e; }
 .art-disc-benefit    { stroke: #2c7a52; }
 .art-disc-grant      { stroke: #9a6a1c; }
 .art-mark      { fill: var(--brand-art-ink); }
-.art-mark-hot  { fill: var(--brand-warning); }
+/* Map ink rather than the interface's warning token: the paper stays pale
+   in the dark theme, and a bolt that brightened with it would glare. */
+.art-mark-hot  { fill: #c98a12; }
 .art-mark-vein { stroke: var(--brand-map-paper); stroke-width: 5; stroke-linecap: round; }
+.art-coin      { fill: #e2b54c; stroke: #9a6a1c; stroke-width: 3; }
+.art-coin-rim  { stroke: rgb(255 250 220 / 0.55); stroke-width: 2.5; }
+.art-coin-sign { stroke: var(--brand-art-ink); stroke-width: 5.5; stroke-linecap: round; stroke-linejoin: round; }
 
-.art-cover { opacity: 0.96; }
+/* The two ends of the line. */
+.art-turbine-tower { fill: var(--brand-art-turbine); stroke: rgb(50 55 60 / 0.75); stroke-width: 1.6; }
+.art-blade         { fill: var(--brand-art-turbine); stroke: rgb(50 55 60 / 0.8); stroke-width: 1.6; }
+.art-hub           { fill: #5d6168; }
+.art-rotor {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: rotor-turn 7s linear infinite;
+}
+@keyframes rotor-turn { to { transform: rotate(360deg); } }
+.art-end-wall       { fill: var(--brand-art-city); }
+.art-end-wall-shade { fill: rgb(40 40 50 / 0.14); }
+.art-end-roof       { fill: #6d6f7a; }
+.art-end-hot        { fill: #c98a12; }
+.art-city           { fill: var(--brand-art-city); stroke: rgb(50 48 46 / 0.6); stroke-width: 2; }
+.art-city-shade     { fill: rgb(40 40 60 / 0.22); }
+.art-city-windows   { stroke: var(--brand-art-window); stroke-width: 3; stroke-dasharray: 3 4; }
+
+.art-cover { opacity: 0.97; }
 .art-grid line { stroke: var(--brand-art-grid); stroke-width: 1.5; }
+
+.art-vignette     { pointer-events: none; }
+.art-vignette-in  { stop-color: rgb(70 60 30); stop-opacity: 0; }
+.art-vignette-out { stop-color: rgb(70 60 30); stop-opacity: 0.18; }
 
 
 /* -------------------------------------------------------------------------
@@ -727,20 +835,22 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
   opacity: 0.75;
 }
 
+.art-route path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+
+/* On the ground, under everything else. A span in the air throws a shadow
+   down and to the right; a buried one leaves a band of turned earth. That
+   difference is the depth in the picture, and it tells the technologies
+   apart without leaning on their colours. */
+.art-route .run-shadow { stroke: rgb(20 30 10 / 0.2); stroke-width: 14; }
+.art-route .run-trench { stroke: rgb(120 90 50 / 0.3); stroke-width: 40; }
+.art-route .tower-shadow { stroke: rgb(20 30 10 / 0.22); stroke-width: 4; }
+
 .art-route .run-case {
-  fill: none;
   stroke: var(--brand-map-paper);
-  stroke-width: 30;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  opacity: 0.85;
+  stroke-width: 28;
+  opacity: 0.88;
 }
-.art-route .run-body {
-  fill: none;
-  stroke-width: 16;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
+.art-route .run-body { stroke-width: 15; }
 .art-route .run-lattice { stroke: var(--brand-tech-lattice); }
 .art-route .run-tpylon  { stroke: var(--brand-tech-tpylon); }
 .art-route .run-cable   { stroke: var(--brand-tech-cable); }
@@ -749,10 +859,25 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
 .art-route .run-body.run-cable { stroke-dasharray: 22 16; }
 
 /* A tower at every cell the line is carried above ground on. This says
-   which technology is in use far better than a colour does. */
-.art-tower         { stroke: var(--brand-map-paper); stroke-width: 4; }
-.art-tower-lattice { fill: var(--brand-tech-lattice); }
-.art-tower-tpylon  { fill: var(--brand-tech-tpylon); }
+   which technology is in use far better than a colour does. Drawn twice:
+   a pale edge so it stands out from the line behind it, then the frame. */
+.art-route .tower-edge  { stroke: var(--brand-map-paper); stroke-width: 8; }
+.art-route .tower-frame { stroke-width: 3.4; }
+.art-tower-lattice .tower-frame { stroke: var(--brand-tech-lattice); }
+.art-tower-tpylon  .tower-frame { stroke: var(--brand-tech-tpylon); stroke-width: 5; }
+.art-tower-tpylon  .tower-edge  { stroke-width: 10; }
+
+/* The current, once the line is energised: bright dashes running from the
+   generation site to the demand centre. The dash and the gap add up to the
+   distance the animation moves, so the loop has no visible seam. */
+.art-route .run-flow {
+  stroke: #fff6c8;
+  stroke-width: 6;
+  stroke-dasharray: 2 26;
+  opacity: 0.95;
+  animation: run-flow 900ms linear infinite;
+}
+@keyframes run-flow { to { stroke-dashoffset: -28; } }
 
 .art-head {
   fill: none;
@@ -760,6 +885,10 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
   stroke-width: 6;
   animation: head-pop 420ms ease-out;
 }
+.art-head-dot { stroke: var(--brand-map-paper); stroke-width: 4; }
+.art-head-dot.run-dot-lattice { fill: var(--brand-tech-lattice); }
+.art-head-dot.run-dot-tpylon  { fill: var(--brand-tech-tpylon); }
+.art-head-dot.run-dot-cable   { fill: var(--brand-tech-cable); }
 @keyframes head-pop {
   from { stroke-width: 2; opacity: 0.15; }
   to   { stroke-width: 6; opacity: 1; }

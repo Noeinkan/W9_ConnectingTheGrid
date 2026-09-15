@@ -11,22 +11,21 @@
    The map is drawn in three layers, all exactly the same size and stacked
    on top of each other:
 
-     the landscape   one decorative SVG, built by js/mapart.js
+     the landscape   two decorative SVGs, built by js/mapart.js
      the board       a grid of real <button> elements, transparent
      the arrows      where the line can go next, over the target square
 
-   The route is drawn into the SVG, over the landscape, but it is owned here
-   rather than by mapart.js: the landscape is built once per map and the
-   route is rebuilt on every move.
+   The route is drawn into the upper of the two SVGs, over the landscape,
+   by js/routeart.js: the landscape is built once per map and the route is
+   rebuilt on every move.
 
    Exposes one global: Render.
    ========================================================================= */
 
-var Render = (function (CFG, Score, MapArt) {
+var Render = (function (CFG, Score, MapArt, RouteArt) {
   'use strict';
 
   var NS = 'http://www.w3.org/2000/svg';
-  var U = MapArt.units;
 
   var els = {};        // cached page elements
   var cells = [];      // cell buttons, indexed [row][col]
@@ -62,24 +61,6 @@ var Render = (function (CFG, Score, MapArt) {
     return node;
   }
 
-  function round(value) { return Math.round(value * 100) / 100; }
-
-  function centreOf(col, row) { return [(col + 0.5) * U, (row + 0.5) * U]; }
-
-  // The middle of one edge of a cell - where the line crosses into the next.
-  function edgeOf(col, row, side) {
-    var step = STEP[side];
-    return [(col + 0.5 + step[0] / 2) * U, (row + 0.5 + step[1] / 2) * U];
-  }
-
-  // Which way does `to` lie from `from`? Always orthogonal neighbours.
-  function sideBetween(from, to) {
-    if (to.row < from.row) { return 'n'; }
-    if (to.row > from.row) { return 's'; }
-    if (to.col > from.col) { return 'e'; }
-    return 'w';
-  }
-
   /* ---------------------------------------------------------------------
      The map: built once, whenever a new landscape is generated
      ------------------------------------------------------------------- */
@@ -90,6 +71,7 @@ var Render = (function (CFG, Score, MapArt) {
     ghostLayer = drawn.ghost;
     els.art.innerHTML = '';
     els.art.appendChild(drawn.svg);
+    els.art.appendChild(drawn.overlay);
 
     /* The board's shape is read by the map frame, the button grid, the
        arrows and the tooltip, so it is set once here, on the box they all
@@ -341,6 +323,8 @@ var Render = (function (CFG, Score, MapArt) {
       var button = document.createElement('button');
       button.type = 'button';
       button.className = 'chevron' + (exit.ok ? '' : ' is-dead');
+      // Lets js/guidance.js find the arrow for a direction without counting.
+      button.dataset.dir = exit.dir;
       button.tabIndex = -1;
       button.setAttribute('aria-hidden', 'true');
       var aheadId = Score.typeIdAt(exit.to.col, exit.to.row);
@@ -372,151 +356,14 @@ var Render = (function (CFG, Score, MapArt) {
   /* ---------------------------------------------------------------------
      The route
      ---------------------------------------------------------------------
-     Grouped into runs of cells sharing one technology, and drawn as one
-     path per run rather than one bar per cell. A corner then comes out as a
-     corner instead of as two rectangles overlapping, which is what the old
-     drawing needed a white glow to hide.
+     Drawn by js/routeart.js into the two groups the landscape leaves empty
+     for it. Kept as two thin calls here so game.js still has one object to
+     talk to.
      ------------------------------------------------------------------- */
 
-  // A polyline with its corners eased off, which is how a transmission line
-  // turns: straight between towers, with the angle taken at one of them.
-  function roundedPath(points, radius) {
-    if (points.length < 2) { return ''; }
-    var d = 'M' + round(points[0][0]) + ' ' + round(points[0][1]);
+  function paintRoute(state) { RouteArt.paint(routeLayer, state); }
 
-    for (var i = 1; i < points.length - 1; i++) {
-      var before = points[i - 1];
-      var here = points[i];
-      var after = points[i + 1];
-
-      var inX = here[0] - before[0];
-      var inY = here[1] - before[1];
-      var outX = after[0] - here[0];
-      var outY = after[1] - here[1];
-      var inLength = Math.sqrt(inX * inX + inY * inY) || 1;
-      var outLength = Math.sqrt(outX * outX + outY * outY) || 1;
-      var r = Math.min(radius, inLength / 2, outLength / 2);
-
-      d += ' L' + round(here[0] - inX / inLength * r) + ' ' + round(here[1] - inY / inLength * r);
-      d += ' Q' + round(here[0]) + ' ' + round(here[1]) +
-           ' ' + round(here[0] + outX / outLength * r) +
-           ' ' + round(here[1] + outY / outLength * r);
-    }
-
-    var last = points[points.length - 1];
-    return d + ' L' + round(last[0]) + ' ' + round(last[1]);
-  }
-
-  /* Splits the route into runs of one technology, and works out where the
-     line enters the first cell of each run and leaves the last. */
-  function runsOf(state) {
-    var route = state.route;
-    var runs = [];
-
-    route.forEach(function (segment, index) {
-      var previous = route[index - 1];
-      var next = route[index + 1];
-
-      var into = previous ? sideBetween(segment, previous) : CFG.start.entry;
-      var outOf = next ? sideBetween(segment, next) : state.openEnd;
-
-      var run = runs[runs.length - 1];
-      if (!run || run.techId !== segment.techId) {
-        run = { techId: segment.techId, cells: [], into: into };
-        runs.push(run);
-      }
-      run.cells.push(segment);
-      run.outOf = outOf;
-    });
-
-    return runs;
-  }
-
-  function pointsFor(run) {
-    var first = run.cells[0];
-    var last = run.cells[run.cells.length - 1];
-    var points = [edgeOf(first.col, first.row, run.into)];
-    run.cells.forEach(function (segment) {
-      points.push(centreOf(segment.col, segment.row));
-    });
-    if (run.outOf) { points.push(edgeOf(last.col, last.row, run.outOf)); }
-    return points;
-  }
-
-  // A tower, drawn at the centre of a cell the line is carried above.
-  function tower(techId, col, row) {
-    var at = centreOf(col, row);
-    var d = techId === 'tpylon'
-      ? 'M-3-12h6v24h-6zM-13-12h26v6h-26z'          // a T
-      : 'M-4-13h8l6 26h-8l-2-8h-8l-2 8h-8z';        // a lattice tower
-    return svgNode('path', {
-      class: 'art-tower art-tower-' + techId,
-      d: d,
-      transform: 'translate(' + round(at[0]) + ' ' + round(at[1]) + ') scale(0.8)'
-    });
-  }
-
-  function paintRoute(state) {
-    if (!routeLayer) { return; }
-    routeLayer.innerHTML = '';
-    if (!state.route.length) { return; }
-
-    var runs = runsOf(state);
-    var paths = runs.map(function (run) {
-      return { run: run, d: roundedPath(pointsFor(run), U * 0.24) };
-    });
-
-    /* Two passes. One would let the casing of a later run be painted over
-       the body of an earlier one wherever the technology changes. */
-    paths.forEach(function (piece) {
-      routeLayer.appendChild(svgNode('path', { class: 'run-case', d: piece.d }));
-    });
-    paths.forEach(function (piece) {
-      routeLayer.appendChild(svgNode('path', {
-        class: 'run-body run-' + piece.run.techId, d: piece.d
-      }));
-    });
-
-    // Buried cable carries no towers, because there is nothing to see.
-    state.route.forEach(function (segment) {
-      if (segment.techId === 'cable') { return; }
-      routeLayer.appendChild(tower(segment.techId, segment.col, segment.row));
-    });
-
-    var head = state.route[state.route.length - 1];
-    var at = centreOf(head.col, head.row);
-    routeLayer.appendChild(svgNode('circle', {
-      class: 'art-head', cx: round(at[0]), cy: round(at[1]), r: U * 0.28
-    }));
-  }
-
-  /* The best route the balance search found, drawn over the map once the
-     game is finished.
-
-     Built from exactly the same run-splitting and path-rounding as the
-     player's own line, so the two are directly comparable - a difference on
-     screen is a real difference in the route, not a difference in how it
-     was drawn. It leaves through the demand centre because every route the
-     search reports does. */
-  function paintGhostRoute(route) {
-    if (!ghostLayer) { return; }
-    ghostLayer.innerHTML = '';
-    if (!route || !route.length) { return; }
-
-    /* Two passes, for the same reason the real route has them: the casing
-       of one run must not be painted over the body of another. Here it also
-       keeps the line readable over dark woodland as well as pale fields. */
-    var paths = runsOf({ route: route, openEnd: CFG.end.exit }).map(function (run) {
-      return roundedPath(pointsFor(run), U * 0.24);
-    });
-
-    paths.forEach(function (d) {
-      ghostLayer.appendChild(svgNode('path', { class: 'ghost-case', d: d }));
-    });
-    paths.forEach(function (d) {
-      ghostLayer.appendChild(svgNode('path', { class: 'ghost-run', d: d }));
-    });
-  }
+  function paintGhostRoute(route) { RouteArt.paintGhost(ghostLayer, route); }
 
   function clearGhostRoute() { paintGhostRoute(null); }
 
@@ -573,8 +420,16 @@ var Render = (function (CFG, Score, MapArt) {
     els.tip.style.setProperty('--cy', row + (row <= 1 ? 1 : 0));
     if (row <= 1) { els.tip.setAttribute('data-below', ''); }
     else { els.tip.removeAttribute('data-below'); }
+
+    /* Anything else worth saying about the square is added by whoever
+       registered for it - js/guidance.js - into this same box, last, so it
+       can also move the box if it has made it taller. */
+    if (tipDecorator) { tipDecorator(els.tip, col, row); }
     els.tip.hidden = false;
   }
+
+  var tipDecorator = null;
+  function decorateTip(fn) { tipDecorator = fn; }
 
   function hideTip() { if (els.tip) { els.tip.hidden = true; } }
 
@@ -802,12 +657,16 @@ var Render = (function (CFG, Score, MapArt) {
     if (els.reset) { els.reset.disabled = !state.canReset; }
   }
 
-  function paintSeed(seed, daily) {
+  /* The weekly label falls back to the ordinary one, so a config.js that
+     has not yet got the weekly copy still reads sensibly. */
+  function paintSeed(seed, daily, weekly) {
     if (els.seedValue) { els.seedValue.textContent = seed; }
     if (els.seedLabel) {
-      els.seedLabel.textContent = daily
-        ? CFG.copy.seedDailyLabel
-        : CFG.copy.seedLabel;
+      els.seedLabel.textContent = weekly
+        ? (CFG.copy.seedWeeklyLabel || CFG.copy.seedLabel)
+        : daily
+          ? CFG.copy.seedDailyLabel
+          : CFG.copy.seedLabel;
     }
   }
 
@@ -852,10 +711,12 @@ var Render = (function (CFG, Score, MapArt) {
       if (dial.label.length > widest) { widest = dial.label.length; }
     });
 
-    var lines = [
-      fill(state.daily ? CFG.copy.shareDaily : CFG.copy.shareTitle,
-           { seed: state.seed, date: state.daily })
-    ];
+    // The week is a string like '2026-W38'; weekly wins over daily.
+    var heading = state.weekly && CFG.copy.shareWeekly
+      ? fill(CFG.copy.shareWeekly, { week: state.weekly })
+      : fill(state.daily ? CFG.copy.shareDaily : CFG.copy.shareTitle,
+             { seed: state.seed, date: state.daily });
+    var lines = [heading];
 
     CFG.dials.forEach(function (dial) {
       var value = state.score.dials[dial.id];
@@ -1048,9 +909,11 @@ var Render = (function (CFG, Score, MapArt) {
     paintDifficulty: paintDifficulty,
     shareText: shareText,
     showShareFallback: showShareFallback,
+    showTip: showTip,
+    decorateTip: decorateTip,
     hideTip: hideTip,
     paint: paint,
     elements: els
   };
 
-}(CONFIG, Score, MapArt));
+}(CONFIG, Score, MapArt, RouteArt));

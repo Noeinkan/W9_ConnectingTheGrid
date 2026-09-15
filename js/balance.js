@@ -491,20 +491,23 @@ var Balance = (function (CFG, Score) {
     return total;
   }
 
+  /* The bounds explained at DEFAULT_FLOOR, turned into the two comparisons
+     the inner loop actually makes. Cost sits in the top field of the packed
+     number, so testing it is one comparison against one threshold. */
+  function limitsFor(grid, reportFloor) {
+    var share = (100 - reportFloor) / 100;
+    return {
+      cost: (Math.round(CFG.budgets.COST_BUDGET * share * 10) + refundOn(grid) + 1) * SPAN,
+      env: (Math.round(ZERO + CFG.budgets.ENV_FLOOR * share * 10) + 1) * FIELD
+    };
+  }
+
   function explore(rows, floor, tracer) {
     var reportFloor = typeof floor === 'number' ? floor : DEFAULT_FLOOR;
     var grid = gridFrom(rows);
     var colCount = CFG.grid.cols;
     var rowCount = CFG.grid.rows;
-
-    /* The bounds explained at DEFAULT_FLOOR, turned into the two comparisons
-       the inner loop actually makes. Cost sits in the top field of the packed
-       number, so testing it is one comparison against one threshold. */
-    var share = (100 - reportFloor) / 100;
-    var limits = {
-      cost: (Math.round(CFG.budgets.COST_BUDGET * share * 10) + refundOn(grid) + 1) * SPAN,
-      env: (Math.round(ZERO + CFG.budgets.ENV_FLOOR * share * 10) + 1) * FIELD
-    };
+    var limits = limitsFor(grid, reportFloor);
 
     capHits = 0;
 
@@ -809,7 +812,22 @@ var Balance = (function (CFG, Score) {
     explore: explore,
     verdict: verdict,
     traceBest: traceBest,
-    gridFrom: gridFrom
+    gridFrom: gridFrom,
+
+    /* The search's own moving parts, for js/foresight.js, which runs the
+       same search from the end of a half-built line instead of from the
+       generation site. Lent rather than copied, so the two can never
+       disagree about what a span costs or which states are worth keeping. */
+    core: {
+      DEFAULT_FLOOR: DEFAULT_FLOOR,
+      pack: pack,
+      advance: advance,
+      prune: prune,
+      merge: merge,
+      emptyStates: emptyStates,
+      limitsFor: limitsFor,
+      readingFor: readingFor
+    }
   };
 
 }(typeof CONFIG !== 'undefined' ? CONFIG : require('./config.js'),

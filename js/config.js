@@ -139,6 +139,11 @@ var CONFIG = {
        density      'scatter' only. Roughly what share of the cells get a
                     symbol, 0 to 1. Higher means denser cover.
        description  the plain-English line shown when the cell is inspected
+       tip          one short line saying what this ground means for the
+                    ROUTE - the penalty, the detour, the exception - shown
+                    under the numbers in the tooltip and after "Explain
+                    last span". The description says what the land is;
+                    this says why the player should care.
      --------------------------------------------------------------------- */
   cellTypes: {
     farmland: {
@@ -150,7 +155,8 @@ var CONFIG = {
       passable: true,
       icon: 'img/farmland.svg',
       texture: 'plain',
-      description: 'Open agricultural land. The easiest and cheapest ground to build across.'
+      description: 'Open agricultural land. The easiest and cheapest ground to build across.',
+      tip: 'The baseline. Nothing here counts against you but the span itself.'
     },
     road: {
       id: 'road',
@@ -161,7 +167,8 @@ var CONFIG = {
       passable: true,
       icon: 'img/road.svg',
       texture: 'plain',
-      description: 'A public road. Working over live traffic means closures and disruption.'
+      description: 'A public road. Working over live traffic means closures and disruption.',
+      tip: 'Road crossing: closures and disruption cost community support whichever way you cross.'
     },
     rocky: {
       id: 'rocky',
@@ -173,7 +180,8 @@ var CONFIG = {
       icon: 'img/rocky.svg',
       texture: 'scatter',
       density: 0.75,
-      description: 'Hard rock. Foundations need blasting and piling, which costs time and money.'
+      description: 'Hard rock. Foundations need blasting and piling, which costs time and money.',
+      tip: 'Blasting and piling put the price up, and do a little harm to the ground.'
     },
     hilly: {
       id: 'hilly',
@@ -185,7 +193,8 @@ var CONFIG = {
       icon: 'img/hilly.svg',
       texture: 'scatter',
       density: 0.7,
-      description: 'Steep ground. Awkward access for plant and cranes, but nothing sensitive.'
+      description: 'Steep ground. Awkward access for plant and cranes, but nothing sensitive.',
+      tip: 'Awkward access puts the price up, but nothing here is sensitive.'
     },
     woodland: {
       id: 'woodland',
@@ -197,7 +206,8 @@ var CONFIG = {
       icon: 'img/woodland.svg',
       texture: 'scatter',
       density: 0.8,
-      description: 'Established trees. A route through here means felling and a permanent cleared swathe.'
+      description: 'Established trees. A route through here means felling and a permanent cleared swathe.',
+      tip: 'Felling a swathe harms the environment. A T-pylon softens it; cable almost removes it.'
     },
     river: {
       id: 'river',
@@ -208,7 +218,8 @@ var CONFIG = {
       passable: true,
       icon: 'img/river.svg',
       texture: 'plain',
-      description: 'A watercourse. Long spans and tall towers are needed. Cable cannot be laid through it.'
+      description: 'A watercourse. Long spans and tall towers are needed. Cable cannot be laid through it.',
+      tip: 'River crossing: every route makes one. Cable is not allowed, so a buried line has to come up to cross.'
     },
     sssi: {
       id: 'sssi',
@@ -220,7 +231,8 @@ var CONFIG = {
       icon: 'img/sssi.svg',
       texture: 'scatter',
       density: 0.5,
-      description: 'Protected habitat. Building here does serious and hard-to-reverse ecological damage.'
+      description: 'Protected habitat. Building here does serious and hard-to-reverse ecological damage.',
+      tip: 'The heaviest environmental harm on the map. Going round is almost always worth the extra spans.'
     },
     settlement: {
       id: 'settlement',
@@ -232,7 +244,8 @@ var CONFIG = {
       icon: 'img/settlement.svg',
       texture: 'scatter',
       density: 0.85,
-      description: 'Where people live and work. Overhead lines here draw strong and sustained objection.'
+      description: 'Where people live and work. Overhead lines here draw strong and sustained objection.',
+      tip: 'The heaviest community penalty on the map. If the line must pass here, this is where cable earns its price.'
     },
     customer: {
       id: 'customer',
@@ -243,7 +256,8 @@ var CONFIG = {
       passable: true,
       icon: 'img/customer.svg',
       texture: 'landmark',
-      description: 'A site waiting for a connection. Route through it and they get connected.'
+      description: 'A site waiting for a connection. Route through it and they get connected.',
+      tip: 'Gives community support back. Worth a small detour.'
     },
     benefit: {
       id: 'benefit',
@@ -254,7 +268,8 @@ var CONFIG = {
       passable: true,
       icon: 'img/benefit.svg',
       texture: 'landmark',
-      description: 'Land offered under a community benefit scheme. Welcomed locally, and free to cross.'
+      description: 'Land offered under a community benefit scheme. Welcomed locally, and free to cross.',
+      tip: 'Free to cross and welcomed locally. Worth a small detour.'
     },
     grant: {
       id: 'grant',
@@ -270,7 +285,8 @@ var CONFIG = {
       passable: true,
       icon: 'img/grant.svg',
       texture: 'plain',
-      description: 'A funded connection point. Routing through it brings money to the scheme, but it is nowhere near the direct line.'
+      description: 'A funded connection point. Routing through it brings money to the scheme, but it is nowhere near the direct line.',
+      tip: 'Pays cost back, and the same sum whichever technology crosses it.'
     },
     substation: {
       id: 'substation',
@@ -281,7 +297,8 @@ var CONFIG = {
       passable: true,
       icon: 'img/substation.svg',
       texture: 'landmark',
-      description: 'A switching and transformer site. The connection must pass through one to be energised.'
+      description: 'A switching and transformer site. The connection must pass through one to be energised.',
+      tip: 'The line must pass through one. Pick the one that suits the rest of your route.'
     },
     water: {
       id: 'water',
@@ -292,7 +309,8 @@ var CONFIG = {
       passable: false,
       icon: 'img/water.svg',
       texture: 'plain',
-      description: 'A lake or reservoir. The route cannot cross it.'
+      description: 'A lake or reservoir. The route cannot cross it.',
+      tip: 'The line has to go round, so a lake near the direct line means a detour.'
     }
   },
 
@@ -433,6 +451,102 @@ var CONFIG = {
 
 
   /* -----------------------------------------------------------------------
+     MAP ARCHETYPES
+     Kinds of landscape, so that a new map is not just another roll of the
+     same one. Which kind a map is comes from its seed, by weight, so a seed
+     shared with somebody always draws the same kind and the same map.
+
+       weight      how often this kind comes up, against the others. Four
+                   kinds at 1 and one at 3 means the 3 comes up three times
+                   in eight.
+       label       the name shown beside the landscape's name
+       hint        one sentence, shown when the name is hovered or focused
+       weekly      true if it can be This week's landscape. The plain kind
+                   is left out, so the week is always something particular.
+       maxTries    rerolls allowed while looking for one of this kind. Only
+                   needed on a kind that is rarely accepted.
+       generator   changes laid over THE MAP GENERATOR above, one level deep:
+                   `town: { side: 'gap' }` keeps the town's cell count.
+                     river.banks   share of the ground on both river banks
+                                   that grows woodland, 0 to 1
+                     town.side     'far' (usual) or 'gap': the town stands
+                                   across the way round instead
+       accept      what a map of this kind must ALSO show, on top of the
+                   balance checks every map passes. All optional:
+                     weakestBelow      the best route found scores under
+                                       this on its weakest dial
+                     dialBelow         e.g. { comm: 90 }: the best route
+                                       cannot get that dial above this
+                     everyDialAtMost   the best route has no dial above this
+                     detourCostAtMost  the best route costs at most this many
+                                       times what the cheapest route costs
+
+     Every number below was measured, not guessed. Re-measure with
+     `node js/archetypes.js --seeds 300` before moving one: it reports how
+     often each kind is accepted, and a kind accepted less than a third of
+     the time needs a higher maxTries.
+     --------------------------------------------------------------------- */
+  archetypes: [
+    {
+      id: 'classic',
+      weight: 3,
+      label: 'Open country',
+      hint: 'Protected land across the direct line, and a longer way round it.',
+      weekly: false
+    },
+    {
+      id: 'squeeze',
+      weight: 1,
+      // Not "Tight squeeze": the difficulty badge beside it already says Tight.
+      label: 'Narrow gap',
+      hint: 'The way round is one row wide and rough going. A balanced route exists, but only just.',
+      weekly: true,
+      generator: {
+        sssi: { gapRows: 1 },
+        weights: { rocky: 0.14, hilly: 0.20, woodland: 0.26 },
+        lake: { cells: 5 }
+      },
+      accept: { weakestBelow: 73 }
+    },
+    {
+      id: 'community',
+      weight: 1,
+      label: 'Community pressure',
+      hint: 'The town stands across the way round. Staying clear of the habitat means passing homes, or paying to bury the line.',
+      weekly: true,
+      generator: { town: { side: 'gap', cells: 8 } },
+      accept: { dialBelow: { comm: 90 } }
+    },
+    {
+      id: 'crossing',
+      weight: 1,
+      label: 'Hard crossing',
+      hint: 'Woods line both banks of the river, so there is no cheap place to cross it.',
+      weekly: true,
+      generator: { river: { banks: 1 } }
+    },
+    {
+      id: 'knife',
+      weight: 1,
+      label: 'Knife edge',
+      hint: 'Nothing here can be kept comfortable. A balanced route has to run close to the line on all three dials.',
+      weekly: true,
+      generator: { town: { side: 'gap', cells: 8 }, river: { banks: 1 } },
+      accept: { everyDialAtMost: 85 }
+    },
+    {
+      id: 'longway',
+      weight: 1,
+      label: 'The long way round',
+      hint: 'The straight line looks cheapest. Count again: the way round costs barely more.',
+      weekly: true,
+      maxTries: 60,
+      accept: { detourCostAtMost: 1.08 }
+    }
+  ],
+
+
+  /* -----------------------------------------------------------------------
      THE MAP ALPHABET
      Each letter stands for one kind of ground. The generator writes maps in
      these letters and the scoring engine reads them back, so a new kind of
@@ -481,23 +595,47 @@ var CONFIG = {
          nothing is shown, which is right for the two that have no budget to
          run out of. */
       budget: 'COST_BUDGET',
-      spend: 'cost'
+      spend: 'cost',
+      /* The last line of the "Why?" note on a meter that has dropped, after
+         the list of where its points went. Say what moves this dial, in a
+         sentence a player can act on. */
+      whyHint: 'Cable costs six times what a lattice tower does, and every extra span adds up. Connection funding gives some back.'
     },
     {
       id: 'env',
       label: 'Environment',
       goodDirection: 'A high score means little harm to habitats and landscape.',
       lowLabel: 'Serious harm',
-      highLabel: 'Well protected'
+      highLabel: 'Well protected',
+      whyHint: 'Designated land does the most harm, then woodland. A T-pylon cuts harm by nearly a third; cable by four fifths.'
     },
     {
       id: 'comm',
       label: 'Community',
       goodDirection: 'A high score means the route is welcome locally.',
       lowLabel: 'Strong objection',
-      highLabel: 'Well supported'
+      highLabel: 'Well supported',
+      whyHint: 'Houses and roads cost support; customers and benefit land give it back. Quieter technology softens both, the good with the bad.'
     }
   ],
+
+
+  /* -----------------------------------------------------------------------
+     GUIDANCE WHILE ROUTING
+     How loudly the game speaks up about the best finish still open - the
+     best weakest dial any route onward from the end of the line can still
+     reach. See js/foresight.js.
+
+       slipNotice  a span that takes at least this many points off the best
+                   finish is mentioned in the status line and tinted amber
+                   on the map. Smaller losses are real but not worth a
+                   sentence each: on a long drag they would fill the status
+                   line with noise. Losing the balanced verdict is always
+                   mentioned, however small the drop that did it.
+     --------------------------------------------------------------------- */
+  guidance: {
+    slipNotice: 1
+  },
 
   // Words used to describe any dial value out loud. Checked top down: the
   // first band whose 'min' the score reaches is the one used.
@@ -660,6 +798,36 @@ var CONFIG = {
     parLineMatched: 'Your weakest dial finished at {yours}.',
     difficultyLabel: 'Difficulty',
 
+    // This week's landscape: one of the particular kinds, the same all week.
+    weeklyButton: "This week's",
+    seedWeeklyLabel: "This week's landscape",
+    shareWeekly: 'Connecting the Grid - week {week}',
+    // Read out before the kind of landscape, e.g. "Kind of landscape: Knife edge."
+    archetypeLabel: 'Kind of landscape',
+
+    /* Blind mode. The land and what it costs stay visible - those are facts
+       about the ground - but every reading of the score is held back until
+       the connection is finished. */
+    blindLabel: 'Blind mode',
+    blindHint: 'Scores stay hidden until the connection is finished. The land and its costs are still shown.',
+    blindMeters: 'Hidden until the connection is finished.',
+
+    /* The route summary under the meters, one line until it is opened, so
+       keep these short: heading and line share about forty characters.
+       Facts about the line as built, never a forecast - what is still open
+       is the forecast's job. */
+    summaryHeading: 'Route so far',
+    summaryEmpty: 'nothing built yet',
+    summarySpans: '{n} spans',
+    summarySpan: '1 span',
+    summaryAhead: 'at least {n} more',
+    summaryArrived: 'arrived',
+    summaryGround: 'Ground',
+    summaryTech: 'Technology',
+    // Which dial would decide the verdict if the route finished now.
+    summaryHolding: '{dial} is holding the verdict back: {value}, needs {threshold}.',
+    summaryClear: 'All three dials are at {threshold} or above.',
+
     /* On the arrows, and on a square with nothing worth saying about it.
        The arrow names the ground it leads into, because that is the part of
        the choice the meters cannot show: the span being paid for now is the
@@ -677,12 +845,14 @@ var CONFIG = {
     instructions: [
       'Draw a transmission line from the generation site on the left to the demand centre on the right. The line can only ever leave the square it is standing on, so there is only ever one square in play - the highlighted one.',
       'Click one of the arrows on that square to send the line that way. Clicking the square itself carries straight on, and you can hold the mouse down and drag to draw a run in one go. Dragging back over the line rubs it out.',
-      'From the keyboard: arrow keys move around the map, and an arrow key pressed on the highlighted square sends the line that way. Press 1, 2 or 3 to change technology.',
+      'From the keyboard: arrow keys move around the map, and an arrow key pressed on the highlighted square sends the line that way. Hold Shift with the arrow to look that way first without building. Press 1, 2 or 3 to change technology, and E to have the last span explained.',
       'Choose the technology before each span. Lattice towers are cheapest and the most visible; T-pylons cost more and sit more quietly; underground cable hides the line almost entirely but is enormously expensive, and cannot be taken through a river.',
       'Hover over any square to see what the land is and what crossing it costs. On the square in play, the dashed marks inside the three meters show where each one lands if you build it - change technology and watch them move. That is the trade-off, before you have paid for it rather than after.',
-      'The arrows say what they lead into. Most ground costs you something; a funded connection point pays you back, but it is never near the direct line.',
+      'The arrows say what they lead into, and an arrow into water, off the map or back into the line is marked as a dead end. Most ground costs you something; a funded connection point pays you back, but it is never near the direct line.',
+      'Under the meters, Best finish still open is the best score any route from where the line has got to can still reach. It never says which way to go, but when a span costs points you cannot get back the map tints that span and the status line says so. Why? beside a meter lists where its points went.',
       'The line must pass through a substation to be energised, and it must arrive at the demand centre rather than run past it.',
-      'Every landscape is generated and checked before you see it, so a balanced route always exists. New landscape rolls another one, and Today\'s landscape is the one everybody else is playing today. When you finish, the verdict says what the best route found here scores, and can draw it on the map.'
+      'Every landscape is generated and checked before you see it, so a balanced route always exists. New landscape rolls another one, and Today\'s landscape is the one everybody else is playing today. When you finish, the verdict says what the best route found here scores, and can draw it on the map.',
+      'Landscapes come in kinds, named beside the landscape\'s name: a narrow gap, a town across the way round, a river with no cheap crossing, and more. This week\'s landscape is always one of the particular kinds, and stays the same all week. Blind mode hides every score until the connection is finished, so the route has to be read off the land alone.'
     ],
 
     // How each cell is described to a screen reader. The {braces} are filled
@@ -709,7 +879,130 @@ var CONFIG = {
     committedLabel: 'Committed mode',
     committedHint: 'Spans cannot be taken down once they are up, the way they cannot on site.',
 
-    boardLabel: 'Route map, {cols} columns by {rows} rows'
+    boardLabel: 'Route map, {cols} columns by {rows} rows',
+
+    /* The best finish still open, under the meters. {weakest} is the best
+       weakest dial a route onward from here can reach; {verdict} is the
+       title of the verdict that route would earn. Say "found", never
+       "possible" - see the note at the top of js/foresight.js. */
+    forecastHeading: 'Best finish still open',
+    /* Kept to one line in the rail: this is the line shown most of the
+       time, and the rail is full. {verdict} is available here too. */
+    forecastOnCourse: 'Consent still within reach',
+    forecastAtBest: 'At best now: {verdict}',
+    forecastBelowFloor: 'Every way on found from here leaves a dial below {floor}.',
+    forecastBlocked: 'No way on to the demand centre found from here without doubling back.',
+    forecastDone: 'Finished: {verdict}',
+    forecastHint: 'The best weakest dial any route onward from here can still reach. It never says which way to go - only how much is still on the table.',
+    forecastSpoken: 'Best finish still open: {weakest}. {line}',
+
+    /* Said in the status line when a span costs something that cannot be
+       got back. {drop} is how many points came off the best finish. */
+    moodSlipped: '{n} spans built. That one cost {drop} off the best finish still open.',
+    moodLost: 'That span put a route that gets consent out of reach. Undo it to win the chance back.',
+    moodLostCommitted: 'That span put a route that gets consent out of reach, and in Committed mode it stays down.',
+    moodBlocked: 'That span leaves no way on to the demand centre without doubling back. Undo it.',
+    moodBlockedCommitted: 'That span leaves no way on to the demand centre without doubling back.',
+    // On the tooltip and the screen reader label of a span already built.
+    routeMoodSlipped: 'This span cost {drop} off the best finish.',
+    routeMoodLost: 'This span put a route that gets consent out of reach.',
+
+    /* "Explain last span" - the button under the forecast, and the E key. */
+    // The button is short to share a line with the forecast; the label says it in full.
+    explainButton: 'Explain',
+    explainButtonLabel: 'Explain last span (E)',
+    explainNothing: 'Nothing is built yet, so there is no span to explain.',
+    explainSpan: 'Span {n}: {terrain} on {tech}. It added cost {cost}, environment {env}, community {comm}.',
+    explainMoved: 'That took {changes}.',
+    explainChange: '{dial} from {from} to {to}',
+    explainStill: 'None of the dials moved.',
+    /* The direction matters as much as the ground: a cheap span pointed
+       into designated land commits the NEXT span to it, and that is often
+       where the points really went. */
+    explainHeading: 'It sends the line to the {side}, into {terrain}.',
+    explainKept: 'The best finish still open held at {after}.',
+    explainDropped: 'The best finish still open fell from {before} to {after}.',
+    explainLost: 'The best finish still open fell from {before} to {after}, which puts a route that gets consent out of reach.',
+    explainGone: 'After it, no way on was found that keeps every dial above {floor}.',
+    explainBlocked: 'After it, no way on to the demand centre was found without doubling back.',
+
+    /* Holding Shift and pressing an arrow key on the highlighted square
+       looks down that way without building anything. */
+    previewExit: 'To the {side}: {terrain}, {cost} / {env} / {comm} a span on {tech}. Press the arrow without Shift to send the line there.',
+    previewFinish: 'To the {side} is the way into the demand centre. Press the arrow without Shift to finish.',
+    previewOffMap: 'To the {side} is the edge of the map. The line would have nowhere to go.',
+    previewWater: 'To the {side} is open water. The line would be stuck there.',
+    previewUsed: 'To the {side} the route already runs, and the line cannot cross itself.',
+    previewBanned: 'To the {side}: {terrain}, where {tech} cannot be used. Change technology before building there.',
+
+    // On an arrow that leads somewhere the line would be stuck.
+    chevronTrapLabel: 'Send the line to the {side}, into {what}. It would be stuck there.',
+    trapOffMap: 'the edge of the map',
+    trapWater: 'open water',
+    trapUsed: 'its own route',
+
+    /* The technology buttons, when there is a highlighted square: what one
+       span costs there on each. */
+    // One line on purpose: the rail is full. The ground is named on each button's label.
+    techHintOn: 'Per span here: cost / env / community.',
+    techEffect: '{cost} / {env} / {comm}',
+    techBanned: 'Not here',
+    techEffectSpoken: '{tech}. One span on {terrain}: cost {cost}, environment {env}, community {comm}.',
+    techBannedSpoken: '{tech} cannot be used on {terrain}.',
+
+    // The tooltip's table of what the square costs on each technology.
+    tipTechBanned: 'not allowed',
+
+    // The legend's line on what technology does to its numbers.
+    legendTech: '{tech}: {cost}x cost, {impact}x impact',
+    legendTechBans: 'not on {terrain}',
+    legendTechFixed: 'Connection funding is the same sum on every technology.',
+
+    /* The "Why?" note on a meter that has dropped. */
+    meterWhy: 'Why?',
+    meterWhyLabel: 'Why is {dial} at {value}?',
+    meterWhyHeading: '{dial} {value}, {band}',
+    meterWhyNone: 'Nothing on the route has moved this dial yet.',
+    meterWhyItem: '{terrain} x{count} on {tech}: {points}',
+    meterWhyMore: 'And {n} more, smaller.',
+
+    /* The quick tour. Opens by itself when the game is opened without a
+       landscape named in the address, and from the Tour button any time.
+       'at' says what each step points to: target, tech, meters, forecast,
+       or end. Nothing is stored - see README "Coming back to a landscape". */
+    tourButton: 'Tour',
+    tourNext: 'Next',
+    tourBack: 'Back',
+    tourDone: 'Start playing',
+    tourSkip: 'Skip the tour',
+    tourCount: '{n} of {total}',
+    tour: [
+      {
+        at: 'target',
+        title: 'Where the line goes next',
+        body: 'The pulsing square is the only place the next span can go. Click an arrow on it to send the line that way, click the square itself to carry straight on, or drag across the map. From the keyboard, press an arrow key on it.'
+      },
+      {
+        at: 'tech',
+        title: 'Choose what to build',
+        body: 'Pick a technology before each span, or press 1, 2 or 3. Each button shows what one span on the highlighted square costs on it: cost / environment / community.'
+      },
+      {
+        at: 'meters',
+        title: 'The three dials',
+        body: 'Cost, environment and community, each out of 100. The dashed mark shows where a dial lands if you build the highlighted square. When a dial drops, Why? shows where its points went.'
+      },
+      {
+        at: 'forecast',
+        title: 'The best finish still open',
+        body: 'The best score a route from here can still reach. It never says which way to go, but the moment a span puts a winning route out of reach, the game tells you. Explain last span, or the E key, says what the last span did.'
+      },
+      {
+        at: 'end',
+        title: 'Where to finish',
+        body: 'Arrive at the demand centre from the left, having passed through a substation on the way. Hover over any square to see what crossing it costs, or hold Shift and press an arrow key to look before you build.'
+      }
+    ]
   },
 
 

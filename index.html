@@ -8,6 +8,8 @@
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="img/marker-generation.svg" type="image/svg+xml">
 <link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/guidance.css">
+<link rel="stylesheet" href="css/summary.css">
 </head>
 <body>
 
@@ -21,9 +23,11 @@
     <div class="topbar-actions">
       <button type="button" class="btn" id="newMapButton"></button>
       <button type="button" class="btn" id="dailyButton"></button>
+      <button type="button" class="btn" id="weeklyButton"></button>
       <button type="button" class="btn" id="undoButton"></button>
       <button type="button" class="btn" id="resetButton"></button>
       <button type="button" class="btn btn-quiet" id="instructionsTab"></button>
+      <button type="button" class="btn btn-quiet" id="tourButton"></button>
     </div>
   </header>
 
@@ -34,6 +38,34 @@
       <section class="panel" aria-labelledby="dialsHeading">
         <h2 id="dialsHeading">Points</h2>
         <div class="meters" id="meters"></div>
+
+        <!-- The best finish still open: how well a route from where the
+             line has got to could still score. A number and the verdict it
+             would earn, never a direction. See js/foresight.js. -->
+        <div class="forecast" id="forecast" hidden>
+          <p class="forecast-head">
+            <span class="forecast-label" id="forecastLabel"></span>
+            <span class="forecast-value" id="forecastValue"></span>
+          </p>
+          <p class="forecast-line" id="forecastLine"></p>
+          <p class="forecast-actions">
+            <button type="button" class="btn btn-small" id="explainButton"></button>
+            <span class="forecast-key" id="explainKey"></span>
+          </p>
+        </div>
+
+        <!-- Shown in place of the meters while Blind mode holds the score
+             back. See css/summary.css. -->
+        <p class="hint blind-note" id="blindNote"></p>
+
+        <!-- The route so far, in facts: length, ground crossed, technology,
+             and the dial that would decide the verdict now. Never a forecast.
+             One line until opened, because the rail has to fit a 1280x720
+             screen. See js/summary.js. -->
+        <details class="route-summary">
+          <summary id="summaryHeading"></summary>
+          <div id="summary"></div>
+        </details>
       </section>
 
       <section class="panel" aria-labelledby="techHeading">
@@ -42,18 +74,28 @@
         <p class="hint" id="techHint"></p>
       </section>
 
-      <section class="panel">
-        <label class="switch">
-          <input type="checkbox" id="committedToggle">
+      <!-- Two switches on one row. Their explanations are spoken with the
+           switch and shown on hover, rather than printed under it: two
+           printed hints cost more height than the rail has. -->
+      <section class="panel switches">
+        <label class="switch" id="committedSwitch">
+          <input type="checkbox" id="committedToggle" aria-describedby="committedHint">
           <span id="committedLabel"></span>
         </label>
-        <p class="hint" id="committedHint"></p>
+        <label class="switch" id="blindSwitch">
+          <input type="checkbox" id="blindToggle" aria-describedby="blindHint">
+          <span id="blindLabel"></span>
+        </label>
+        <p class="visually-hidden" id="committedHint"></p>
+        <p class="visually-hidden" id="blindHint"></p>
       </section>
 
       <p class="seed-line">
         <span id="seedLabel"></span>
         <code id="seedValue"></code>
         <span class="difficulty" id="difficulty" hidden></span>
+        <!-- The kind of landscape, from its seed. See js/archetypes.js. -->
+        <span class="archetype" id="archetype" hidden></span>
       </p>
 
       <!-- Type a landscape's name to play that exact landscape again. The
@@ -140,8 +182,17 @@
        score    config
        mapgen   config, rng, score
        balance  config, score
-       mapart   config, rng
-       render   config, score, mapart
+       foresight   config, score, balance
+       advice   config, score
+       mapsymbols  nothing
+       mapart   config, rng, mapsymbols
+       routeart config, mapart
+       render   config, score, mapart, routeart
+       guidance config, score, advice, render
+       tour     config
+       archetypes   config, rng, mapgen, balance
+       summary      config, score
+       summarypanel config, summary, archetypes
        game     all of the above
 -->
 <script src="js/config.js"></script>
@@ -149,8 +200,17 @@
 <script src="js/score.js"></script>
 <script src="js/mapgen.js"></script>
 <script src="js/balance.js"></script>
+<script src="js/foresight.js"></script>
+<script src="js/advice.js"></script>
+<script src="js/archetypes.js"></script>
+<script src="js/mapsymbols.js"></script>
 <script src="js/mapart.js"></script>
+<script src="js/routeart.js"></script>
 <script src="js/render.js"></script>
+<script src="js/guidance.js"></script>
+<script src="js/tour.js"></script>
+<script src="js/summary.js"></script>
+<script src="js/summarypanel.js"></script>
 <script src="js/game.js"></script>
 
 </body>

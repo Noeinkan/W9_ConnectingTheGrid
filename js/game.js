@@ -27,7 +27,8 @@
    Exposes one global: Game.
    ========================================================================= */
 
-var Game = (function (CFG, Score, Render, MapGen, Balance) {
+var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Guidance, Tour,
+                      Archetypes, SummaryPanel) {
   'use strict';
 
   /* ---------------------------------------------------------------------
@@ -85,8 +86,14 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
     exits: [],              // the ways out of the target - see exitsFrom()
     seed: null,             // which landscape is being played
     daily: null,            // set when today's landscape is the one in play
+    weekly: null,           // '2026-W38' when this week's landscape is in play
+    archetype: null,        // the kind of landscape - see js/archetypes.js
+    blind: false,           // Blind mode: the score is held back until the finish
     par: null,              // what the balance search found on this landscape
     preview: null,          // where the dials land if the target is built
+    forecast: null,         // the best finish still open - see forecastNow()
+    forecasts: [],          // one reading per route length, 0 to route.length
+    moods: [],              // per span: what it did to the best finish
     canUndo: false,
     canReset: false,
     score: null
@@ -275,6 +282,8 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
     });
     cursor = { col: col, row: row };
     settlePhase();
+    settleForecast();
+    speakMood();
     refresh();
     return true;
   }
@@ -346,6 +355,7 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
     var removed = state.route.pop();
     cursor = { col: removed.col, row: removed.row };
     settlePhase();
+    settleForecast();
     refresh();
     return true;
   }
@@ -357,7 +367,115 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
     state.phase = 'ready';
     cursor = { col: CFG.start.col, row: CFG.start.row };
     settlePhase();
+    settleForecast();
     refresh();
+  }
+
+  /* ---------------------------------------------------------------------
+     The best finish still open
+     ---------------------------------------------------------------------
+     After every span, the balance search runs again from the end of the
+     line: how well could this connection still finish? See the note at the
+     top of js/foresight.js for why that is a number and never a route.
+
+     Kept as a stack with one reading per span laid. Undo then hands the
+     previous reading straight back instead of searching again - which
+     matters on a backward drag, where undo fires once per square - and
+     every span on the map can say what it cost by comparing the reading
+     before it with the one after.
+     ------------------------------------------------------------------- */
+
+  function forecastNow() {
+    /* A finished connection has nothing left to forecast. Its reading is
+       simply what it scored, so the panel and the last span's mood compare
+       like with like. */
+    if (state.phase === 'complete' && state.score) {
+      var dials = state.score.dials;
+      var lowest = Score.lowestDial(dials);
+      return {
+        status: 'done',
+        weakest: lowest.value,
+        lowest: lowest.key,
+        dials: dials,
+        verdictKey: Score.verdictKeyFor(dials),
+        balanced: lowest.value >= CFG.balancedThreshold
+      };
+    }
+    return Foresight.ahead(Score.mapRows(), state.route, state.target);
+  }
+
+  function settleForecast() {
+    var n = state.route.length;
+    // Readings for longer routes are stale once a span comes down.
+    if (state.forecasts.length > n + 1) { state.forecasts.length = n + 1; }
+    if (state.forecasts.length === n + 1 && state.forecasts[n]) {
+      state.forecast = state.forecasts[n];
+      return;
+    }
+    while (state.forecasts.length < n) { state.forecasts.push(null); }
+    state.forecasts[n] = forecastNow();
+    state.forecast = state.forecasts[n];
+  }
+
+  /* If the span just laid cost something that cannot be got back, the
+     status line says so now - which is the whole point of forecasting.
+     Only while routing: the end-of-route phases already say something more
+     useful, and a game played without the meters must not be told. */
+  function speakMood() {
+    if (state.blind || state.phase !== 'routing') { return; }
+    var n = state.route.length;
+    var mood = Advice.moodOf(state.forecasts[n - 1], state.forecasts[n]);
+    var sentence = Advice.moodSentence(mood, n, !CFG.rules.allowUndo);
+    if (!sentence) { return; }
+    state.message = sentence;
+    state.tone = mood.kind === 'slipped' ? 'info' : 'warning';
+  }
+
+  function moodsFor() {
+    var moods = [];
+    for (var i = 0; i < state.route.length; i++) {
+      moods.push(Advice.moodOf(state.forecasts[i], state.forecasts[i + 1]));
+    }
+    return moods;
+  }
+
+  /* ---------------------------------------------------------------------
+     Explaining
+     ---------------------------------------------------------------------
+     Three ways to ask "why", all answered in the status line so a screen
+     reader hears them exactly as a sighted player reads them.
+     ------------------------------------------------------------------- */
+
+  // "Explain last span", or the E key.
+  function explainLast() {
+    say(Advice.explainLast(state.route, state.forecasts, !!state.blind), 'info');
+  }
+
+  // The "Why?" beside a meter.
+  function explainDial(dialId) {
+    if (!state.score) { return; }
+    say(Advice.whySpoken(
+      Advice.whyDial(dialId, state.route, state.score.dials[dialId])), 'info');
+  }
+
+  /* Shift and an arrow key on the highlighted square: what lies that way,
+     without building anything. The keyboard's version of hovering over the
+     square an arrow points at. */
+  function lookAhead(side) {
+    if (!state.target) { return say(CFG.copy.errComplete, 'error'); }
+
+    var exit = null;
+    state.exits.forEach(function (e) { if (e.dir === side) { exit = e; } });
+    if (!exit) {
+      // The one way that is never an exit: back the way the line came in.
+      return say(CFG.copy.errPieceDoesNotFit, 'error');
+    }
+    if (!exit.ok) {
+      return say(check(state.target.col, state.target.row, exit.pieceId).message, 'error');
+    }
+
+    say(Advice.lookAhead(state, side), 'info');
+    Guidance.showLook(state, exit);
   }
 
   /* ---------------------------------------------------------------------
@@ -375,6 +493,8 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
     Score.setMap(built.rows);
     state.seed = built.seed;
     state.daily = built.daily || null;
+    state.weekly = built.weekly || null;
+    state.archetype = built.archetype || null;
 
     /* The balance search has already worked out, for this landscape, the
        best route it can find and what that route scores. It was thrown away
@@ -398,22 +518,36 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
     }
 
     Render.buildMap(built.rows, built.features, built.seed);
-    Render.paintSeed(built.seed, state.daily);
+    Render.paintSeed(built.seed, state.daily, state.weekly);
     Render.paintDifficulty(state.par);
     rememberInAddressBar();
+    // Readings from the last landscape would be reused by reset() otherwise.
+    state.forecasts = [];
     reset();
     Render.setCursor(cursor.col, cursor.row, false);
     return built;
   }
 
+  /* Every landscape is judged as the kind it is: the balance checks, and on
+     top of them whatever its archetype promises. See js/archetypes.js. */
   function newMap(seed) {
-    return install(MapGen.generate(seed, Balance.verdict));
+    return install(MapGen.generate(seed, Archetypes.verdict));
   }
 
   /* Today's landscape: the same one for everybody, worked out from the UTC
      date rather than fetched from anywhere. */
   function newDaily(dateText) {
-    return install(MapGen.daily(dateText, Balance.verdict));
+    return install(MapGen.daily(dateText, Archetypes.verdict));
+  }
+
+  // This week's: the same idea, by ISO week, and always a particular kind.
+  function newWeekly(weekText) {
+    return install(MapGen.weekly(weekText, Archetypes.verdict));
+  }
+
+  function setBlind(on) {
+    state.blind = !!on;
+    refresh();
   }
 
   /* ---------------------------------------------------------------------
@@ -433,6 +567,7 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
     try {
       var query = String(location.search || '');
       if (/[?&]daily(=|&|$)/.test(query)) { return { daily: true }; }
+      if (/[?&]weekly(=|&|$)/.test(query)) { return { weekly: true }; }
       var found = /[?&]seed=([A-Za-z0-9]+)/.exec(query);
       return found ? { seed: found[1].toUpperCase() } : null;
     } catch (ignored) {
@@ -443,8 +578,8 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
   function rememberInAddressBar() {
     try {
       if (!history.replaceState) { return; }
-      history.replaceState(null, '',
-        state.daily ? '?daily' : '?seed=' + encodeURIComponent(state.seed));
+      history.replaceState(null, '', state.daily ? '?daily'
+        : state.weekly ? '?weekly' : '?seed=' + encodeURIComponent(state.seed));
     } catch (ignored) {
       /* file:// in some browsers. The game plays on regardless; only the
          shareable link is lost, and the seed is still on screen. */
@@ -587,7 +722,10 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
     // Worked out here rather than asked for by render.js, which decides no
     // rules and would have to know what a legal span is to ask.
     state.preview = previewSpan();
+    state.moods = moodsFor();
     Render.paint(state);
+    Guidance.paint(state);
+    SummaryPanel.paint(state);
     Render.setCursor(cursor.col, cursor.row, false);
   }
 
@@ -670,6 +808,12 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
       var onTarget = state.target &&
         cursor.col === state.target.col && cursor.row === state.target.row;
 
+      // Shift looks before it builds.
+      if (onTarget && event.shiftKey) {
+        lookAhead(side);
+        return;
+      }
+
       if (onTarget) {
         var to = neighbour(cursor.col, cursor.row, side);
         var exit = exitTowards(to.col, to.row);
@@ -698,15 +842,18 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
     }
   }
 
-  // 1, 2 and 3 pick a technology from anywhere on the page.
+  // 1, 2 and 3 pick a technology from anywhere on the page; E explains.
   function onShortcut(event) {
     if (event.metaKey || event.ctrlKey || event.altKey) { return; }
     if (event.key === 'Escape') { Render.hideTip(); return; }
 
-    var index = ['1', '2', '3'].indexOf(event.key);
-    if (index === -1 || index >= CFG.technologies.length) { return; }
     var field = event.target && event.target.tagName;
     if (field === 'INPUT' || field === 'TEXTAREA') { return; }
+
+    if (event.key === 'e' || event.key === 'E') { explainLast(); return; }
+
+    var index = ['1', '2', '3'].indexOf(event.key);
+    if (index === -1 || index >= CFG.technologies.length) { return; }
     setTech(CFG.technologies[index].id);
   }
 
@@ -776,6 +923,15 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
     Render.buildLegend(Render.elements.legend);
     Render.buildInstructions(Render.elements.instructionsBody);
 
+    // After the meters, the technology buttons and the legend: it dresses them.
+    Guidance.build({ onExplain: explainLast, onExplainDial: explainDial });
+    Tour.init({
+      // Back to the map, on the square in play, when the tour is over.
+      onFinish: function () { Render.setCursor(cursor.col, cursor.row, true); }
+    });
+    // Before the first landscape is installed, which is its first paint.
+    SummaryPanel.build({ onBlind: setBlind, onWeekly: function () { newWeekly(); } });
+
     Render.elements.board.addEventListener('keydown', onBoardKeyDown);
     document.addEventListener('keydown', onShortcut);
     Render.elements.undo.addEventListener('click', function () { undo(); });
@@ -840,14 +996,26 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
        asks for one; otherwise a fresh roll, as before. */
     var asked = readAddressBar();
     if (asked && asked.daily) { newDaily(); }
+    else if (asked && asked.weekly) { newWeekly(); }
     else if (asked && asked.seed) { newMap(asked.seed); }
     else { newMap(); }
+
+    /* The tour opens by itself only when the game was opened without a
+       landscape named in the address. That is the nearest thing to "first
+       time" a game that stores nothing can know: the address gains a seed
+       as soon as a landscape is in play, so a reload, a shared link and
+       today's landscape all go straight to the map. The Tour button opens
+       it any time. */
+    if (!asked) { Tour.start(); }
   }
 
   return {
     init: init,
     newMap: newMap,
     stepTo: stepTo,
+    explainLast: explainLast,
+    explainDial: explainDial,
+    lookAhead: lookAhead,
     previewSpan: previewSpan,
     place: place,
     setTech: setTech,
@@ -856,7 +1024,8 @@ var Game = (function (CFG, Score, Render, MapGen, Balance) {
     state: state
   };
 
-}(CONFIG, Score, Render, MapGen, Balance));
+}(CONFIG, Score, Render, MapGen, Balance, Foresight, Advice, Guidance, Tour,
+  Archetypes, SummaryPanel));
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', Game.init);
