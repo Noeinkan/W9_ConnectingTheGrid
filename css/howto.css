@@ -1,0 +1,537 @@
+@charset "UTF-8";
+/* =========================================================================
+   Connecting the Grid - the How to play sheet
+   =========================================================================
+
+   Styles for js/howto.js and js/howtoart.js. Loaded after css/style.css,
+   css/guidance.css and css/summary.css, because the pictures borrow their
+   classes - the meters, the technology buttons, the forecast, the Why?
+   note, the map symbols and the route - and only adjust them here.
+
+   The pieces of map keep their daylight colours in dark mode, as the map
+   itself does, so what sits on them uses map colours, not theme tokens.
+   ========================================================================= */
+
+/* -------------------------------------------------------------------------
+   The sheet
+   ---------------------------------------------------------------------- */
+.sheet.howto {
+  max-width: 54rem;
+  padding-bottom: 0;
+}
+
+/* Pictures toggle parts of themselves with the hidden attribute, on
+   elements - the meters, the chips - whose own rules set a display. */
+.howto [hidden] { display: none !important; }
+
+.howto .sheet-lead { margin-bottom: 0.4rem; }
+
+.howto-section { margin-top: 1.3rem; }
+.howto-section-title {
+  margin: 0 0 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--brand-ink-muted);
+}
+
+.howto-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.howto-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-width: 0;
+  padding: 0.75rem;
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-line);
+  border-radius: var(--brand-radius);
+}
+.howto-card.is-wide { grid-column: 1 / -1; }
+
+/* Picture first on screen, words first to a screen reader. */
+.howto-picture { order: -1; min-width: 0; }
+
+.howto-card-title { margin: 0 0 0.2rem; font-size: 0.95rem; }
+.howto .howto-card-body {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--brand-ink-muted);
+}
+
+@media (max-width: 40rem) {
+  .howto-cards { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* Close stays in reach however far down the sheet has been read. */
+.howto .howto-foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;           /* over the meters' markers, which are positioned */
+  justify-content: flex-end;
+  margin: 1rem calc(-1 * clamp(1rem, 3vw, 1.6rem)) 0;
+  padding: 0.7rem clamp(1rem, 3vw, 1.6rem);
+  background: var(--brand-surface-raised);
+  border-top: 1px solid var(--brand-line);
+}
+
+
+/* -------------------------------------------------------------------------
+   Panels: pieces of the rail, shown on their own
+   ---------------------------------------------------------------------- */
+.howto-panel {
+  padding: 0.65rem 0.7rem;
+  background: var(--brand-surface-raised);
+  border: 1px solid var(--brand-line);
+  border-radius: var(--brand-radius);
+}
+
+/* Nothing in a picture can be pressed, so nothing may look pressable. */
+.howto-picture .tech,
+.howto-picture .btn,
+.howto-picture .meter-why,
+.howto-picture .archetype,
+.howto-picture .forecast-label { cursor: default; }
+.howto-picture .meter-marker,
+.howto-picture .meter-preview { transition-duration: 450ms; }
+
+.howto .howto-picture p { margin: 0; }
+
+.howto-key {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0 0.4rem;
+  font: 600 0.78rem/1 var(--brand-font);
+  color: var(--brand-ink);
+  background: var(--brand-surface-raised);
+  border: 1px solid var(--brand-line);
+  border-bottom-width: 3px;
+  border-radius: 6px;
+}
+
+.howto-buttons { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.howto-buttons .btn { display: inline-flex; align-items: center; min-height: 1.9rem; }
+.howto-buttons .btn.is-lit {
+  background: var(--brand-accent-soft);
+  border-color: var(--brand-accent);
+}
+.howto-buttons .btn.is-off { opacity: 0.4; text-decoration: line-through; }
+
+
+/* -------------------------------------------------------------------------
+   Pieces of map
+   ---------------------------------------------------------------------- */
+.howto-board {
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--brand-map-paper);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.18), 0 4px 12px rgb(0 0 0 / 0.12);
+}
+.howto-map { display: block; width: 100%; height: auto; }
+
+.howto-target {
+  fill: none;
+  stroke: var(--brand-accent);
+  stroke-width: 6;
+  animation: howto-pulse 1.8s ease-in-out infinite;
+}
+.howto-board[data-outlook="warning"]  .howto-target { stroke: var(--guide-map-slip); }
+.howto-board[data-outlook="negative"] .howto-target { stroke: var(--guide-map-loss); }
+@keyframes howto-pulse {
+  50% { stroke-width: 11; }
+}
+
+.howto-chevron circle {
+  fill: var(--brand-accent);
+  stroke: var(--brand-map-paper);
+  stroke-width: 4;
+}
+.howto-chevron path { fill: var(--brand-accent-ink); }
+.howto-chevron.is-trap circle {
+  fill: var(--brand-map-paper);
+  stroke: var(--guide-map-loss);
+  stroke-dasharray: 7 5;
+}
+.howto-chevron.is-trap path { fill: var(--guide-map-loss); }
+
+/* A span that cost points for good, washed as the board's cells are. */
+.howto-mood.is-slipped { fill: rgb(224 161 38 / 0.32); }
+.howto-mood.is-lost    { fill: rgb(200 55 42 / 0.34); }
+
+.howto-pointer {
+  transition: transform 520ms ease-in-out, opacity 250ms ease;
+}
+.howto-pointer.is-away { opacity: 0; }
+.howto-hand {
+  fill: #ffffff;
+  stroke: #1d1d20;
+  stroke-width: 3;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 2px 2px rgb(0 0 0 / 0.35));
+}
+.howto-hold { fill: rgb(29 29 32 / 0.35); opacity: 0; transition: opacity 150ms ease; }
+.howto-pointer.is-held .howto-hold { opacity: 1; }
+.howto-press {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 5;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: howto-press 650ms ease-out forwards;
+}
+@keyframes howto-press {
+  from { opacity: 1; transform: scale(0.3); }
+  to   { opacity: 0; transform: scale(1.7); }
+}
+
+/* Words laid over a piece of map: the pins, the badges, the tooltip. */
+.howto-notes { position: absolute; inset: 0; pointer-events: none; }
+
+.howto-flag {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 6px));
+  padding: 0.1rem 0.45rem;
+  white-space: nowrap;
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.6;
+  color: #1d1d20;
+  background: var(--brand-map-paper);
+  border-radius: 999px;
+  box-shadow: 0 2px 7px rgb(0 0 0 / 0.3);
+}
+.howto-flag[data-edge="start"] { transform: translate(-18%, calc(-100% - 6px)); }
+.howto-flag[data-edge="end"]   { transform: translate(-82%, calc(-100% - 6px)); }
+
+.howto-badge {
+  position: absolute;
+  transform: translate(-100%, 0);
+  min-width: 1.4em;
+  padding: 0 0.3em;
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  border: 1.5px solid var(--brand-map-paper);
+  border-radius: 999px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  animation: howto-fade 300ms ease-out;
+}
+.howto-badge.is-slipped { color: var(--guide-map-slip-ink); background: var(--guide-map-slip); }
+.howto-badge.is-lost    { color: var(--guide-map-loss-ink); background: var(--guide-map-loss); }
+
+.howto-tip {
+  position: absolute;
+  z-index: 1;
+  width: max-content;
+  max-width: 12rem;
+  margin: 1.9rem 0 0 -0.5rem;
+  padding: 0.35rem 0.5rem;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: #1d1d20;
+  background: #ffffff;
+  border: 1px solid rgb(0 0 0 / 0.15);
+  border-radius: var(--brand-radius-sm);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.25);
+  animation: howto-pop 200ms ease-out;
+}
+@keyframes howto-pop {
+  from { opacity: 0; transform: translateY(3px); }
+}
+/* Opacity alone for the badge: its transform is what places it. */
+@keyframes howto-fade {
+  from { opacity: 0; }
+}
+
+
+/* -------------------------------------------------------------------------
+   The pictures, one by one
+   ---------------------------------------------------------------------- */
+
+/* The technologies: a stretch of line, what it is for, and the ground it
+   is right on or may not cross. */
+.howto-techs { display: grid; gap: 0.7rem; }
+.howto-tech {
+  display: grid;
+  grid-template-columns: 11rem minmax(9rem, 12rem) minmax(0, 1fr);
+  gap: 0.5rem 0.9rem;
+  align-items: center;
+}
+.howto-tech + .howto-tech { padding-top: 0.7rem; border-top: 1px solid var(--brand-line); }
+.howto-tech-name {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.2rem !important;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+.howto-tech-name .howto-key { min-width: 1.4rem; height: 1.4rem; font-size: 0.7rem; }
+.howto-tech-summary {
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: var(--brand-ink-muted);
+}
+.howto-tech-summary::first-letter { text-transform: uppercase; }
+
+.howto-grounds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.howto-ground {
+  position: relative;
+  display: grid;
+  gap: 0.15rem;
+  width: 3.6rem;
+  text-align: center;
+}
+.howto-ground.is-double { width: 7.2rem; }
+.howto-ground-name { font-size: 0.62rem; font-weight: 600; line-height: 1.15; }
+/* A tick or a cross in the corner, so right and wrong never rest on colour. */
+.howto-ground-mark {
+  position: absolute;
+  top: -0.3rem;
+  right: -0.3rem;
+  display: grid;
+  place-items: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1;
+  color: #ffffff;
+  border: 1.5px solid var(--brand-map-paper);
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+}
+.howto-ground.is-good .howto-ground-mark   { background: #1c6b41; }
+.howto-ground.is-banned .howto-ground-mark { background: var(--guide-map-loss); }
+.howto-ground.is-banned .howto-board { filter: grayscale(0.7); opacity: 0.75; }
+.howto-ground.is-banned .howto-ground-name { text-decoration: line-through; color: var(--brand-ink-muted); }
+
+@media (max-width: 46rem) {
+  .howto-tech { grid-template-columns: 8rem minmax(0, 1fr); }
+  .howto-grounds { grid-column: 1 / -1; }
+}
+
+/* Every kind of ground. */
+.howto-land-key {
+  margin-bottom: 0.45rem !important;
+  font-size: 0.72rem;
+  color: var(--brand-ink-muted);
+}
+.howto-lands {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(4.6rem, 1fr));
+  gap: 0.6rem 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.howto-tile { display: grid; gap: 0.2rem; align-content: start; text-align: center; }
+.howto-tile-name { font-size: 0.68rem; font-weight: 600; line-height: 1.2; }
+.howto-tile-only { font-size: 0.6rem; font-weight: 700; color: var(--brand-tech-cable); }
+.howto-nums {
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--brand-ink-muted);
+}
+.howto-nums [data-way] { font-weight: 700; }
+.howto-nums [data-way="bad"]  { color: var(--brand-negative); }
+.howto-nums [data-way="good"] { color: var(--brand-positive); }
+
+/* See it before you build: one square, the buttons, the meters. */
+.howto-preview { display: grid; gap: 0.6rem; }
+.howto-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.howto-preview-head .howto-board { flex: none; width: 2.2rem; border-radius: 4px; }
+
+/* The weakest dial decides. */
+.howto-verdict { display: grid; gap: 0.7rem; }
+.howto-threshold {
+  position: absolute;
+  top: -5px;
+  bottom: -5px;
+  z-index: 1;
+  border-left: 2px dashed var(--brand-ink);
+}
+.howto-verdict .meter:first-child .howto-threshold::before {
+  content: attr(data-value);
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  transform: translateX(-50%);
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--brand-ink);
+}
+.howto-verdict .meter:first-child { margin-top: 0.3rem; }
+.howto-verdict .meter.is-weakest .meter-label,
+.howto-verdict .meter.is-weakest .meter-value { color: var(--brand-negative); font-weight: 700; }
+.howto-verdict .meter.is-weakest .meter-label::after { content: " \25C0"; font-size: 0.7em; }
+.howto .howto-verdict-line {
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.howto-verdict-line[data-tone="positive"] { color: var(--brand-positive); }
+.howto-verdict-line[data-tone="negative"] { color: var(--brand-negative); }
+.howto-verdict-line[data-tone="positive"]::before { content: "\2713  "; }
+.howto-verdict-line[data-tone="negative"]::before { content: "\2715  "; }
+
+/* Best finish still open: the reading over the stretch of map it is about. */
+.howto-forecast { display: grid; gap: 0.5rem; }
+.howto-forecast .forecast { margin-top: 0; }
+
+/* Ask why. The note is the rail's own, held in place instead of floating. */
+.howto-why { display: grid; gap: 0.5rem; }
+.howto .howto-why-note {
+  position: static;
+  width: auto;
+  max-width: none;
+  transition: opacity 250ms ease, transform 250ms ease;
+}
+.howto-why-note.is-shut { opacity: 0; transform: translateY(-4px); }
+.howto-why .meter-why.is-hover { background: var(--brand-accent-soft); }
+.howto-explain {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.74rem;
+  color: var(--brand-ink-muted);
+}
+
+/* The best route found, and which line is which. */
+.howto-best { display: grid; gap: 0.45rem; }
+.howto-route-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem 1.1rem;
+  font-size: 0.72rem;
+  color: var(--brand-ink-muted);
+}
+.howto-route-key > span { display: inline-flex; align-items: center; gap: 0.4rem; }
+.howto-route-line { display: inline-block; width: 1.8rem; height: 0; }
+.howto-route-yours .howto-route-line { border-top: 4px solid var(--brand-tech-lattice); border-radius: 2px; }
+.howto-route-best  .howto-route-line { border-top: 3px dotted var(--brand-ink); }
+
+/* Names and kinds of landscape. */
+.howto-kinds { display: grid; gap: 0.55rem; }
+/* The rail hides these two on narrower screens; the picture of them stays. */
+.howto .howto-seed { display: block; padding: 0; }
+.howto .howto-seed-form { display: flex; }
+.howto-seed code { margin-left: 0.25rem; }
+.howto .howto-seed-form { margin: 0; }
+.howto-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--brand-ink);
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-accent);
+  border-radius: var(--brand-radius-sm);
+}
+.howto-input.is-empty { color: var(--brand-ink-muted); border-color: var(--brand-line); }
+.howto-input:not(.is-empty)::after {
+  content: "";
+  display: inline-block;
+  width: 1px;
+  height: 0.8em;
+  margin-left: 1px;
+  vertical-align: -0.05em;
+  background: var(--brand-ink);
+}
+
+/* The two modes, side by side. */
+.howto-modes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.howto-modes .howto-panel { display: grid; gap: 0.55rem; align-content: start; }
+.howto-switch { cursor: default; }
+.howto-check {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 0.95rem;
+  height: 0.95rem;
+  font-size: 0.7rem;
+  line-height: 1;
+  color: var(--brand-accent-ink);
+  background: var(--brand-surface-raised);
+  border: 1.5px solid var(--brand-ink-muted);
+  border-radius: 3px;
+  transition: background 200ms ease;
+}
+.howto-check.is-on { background: var(--brand-accent); border-color: var(--brand-accent); }
+.howto-check.is-on::after { content: "\2713"; }
+.howto .howto-hidden {
+  font-size: 0.72rem;
+  color: var(--brand-ink-muted);
+}
+.howto-modes .meters { gap: 0.3rem; }
+.howto-modes .meter-label, .howto-modes .meter-value { font-size: 0.7rem; }
+
+@media (max-width: 30rem) {
+  .howto-modes { grid-template-columns: minmax(0, 1fr); }
+}
+
+
+/* -------------------------------------------------------------------------
+   The keys
+   ---------------------------------------------------------------------- */
+.howto-keys {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.55rem 1rem;
+  align-items: center;
+  margin: 0;
+}
+.howto-keys dt { display: flex; }
+.howto-keys dd { margin: 0; font-size: 0.84rem; }
+.howto-caps { display: inline-flex; align-items: center; gap: 0.25rem; }
+.howto-plus { font-size: 0.8rem; color: var(--brand-ink-muted); }
+
+
+/* -------------------------------------------------------------------------
+   Motion and contrast preferences
+   -------------------------------------------------------------------------
+   With motion reduced, js/howto.js holds one frame of every picture and
+   nothing moves between frames; this stops what CSS would still move.
+   ---------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  .howto-target, .howto-press, .howto-badge, .howto-tip { animation: none; }
+  .howto-pointer { transition: none; }
+}
+
+@media (forced-colors: active) {
+  .howto-board { border: 1px solid CanvasText; }
+  .howto-chevron circle { stroke: CanvasText; }
+  .howto-flag, .howto-badge, .howto-tip, .howto-ground-mark { border: 1px solid CanvasText; box-shadow: none; }
+  .howto-threshold { border-left-color: CanvasText; }
+}

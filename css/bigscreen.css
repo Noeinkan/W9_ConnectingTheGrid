@@ -1,0 +1,82 @@
+@charset "UTF-8";
+/* =========================================================================
+   Connecting the Grid - on a big screen
+   =========================================================================
+
+   Styles for js/bigscreen.js: the whole game growing with the screen, the
+   full-screen button, and the two things ?kiosk switches on for a show -
+   the mouse pointer hiding itself, and the notice before a fresh landscape.
+
+   Loaded after the other stylesheets and built from the brand tokens in
+   css/style.css. No colour is defined here.
+   ========================================================================= */
+
+
+/* -------------------------------------------------------------------------
+   Growing with the screen
+   -------------------------------------------------------------------------
+   The layout was tuned on a 1280x720 screen, where the rail is exactly
+   full. Past that size the map used to grow and nothing else did: on a
+   television the controls stayed 272px wide with 10px text, and could not
+   be read from where people stand.
+
+   Everything outside the drawn map is sized in rem, so the root font size
+   is the one number that scales all of it. A 1280x720 screen is 80 rem by
+   45 rem at the browser's default 16px; this keeps it 80 by 45 on any
+   screen bigger than that, taking whichever of width or height runs out
+   first. A 1920x1080 screen therefore shows the 1280x720 layout half as
+   big again, a 4K one three times as big, and the rail still fits
+   exactly, because its height grows in step with the screen's.
+
+   Below 1280x720 the max() keeps the browser's own size, so tablets,
+   phones and small windows are exactly as they were. The media queries in
+   css/style.css are unaffected either way: rem in a media query always
+   means the browser's default size, never this one.
+
+   The cost, and it is the same one the map has always paid: on a screen
+   past 1280x720, browser zoom enlarges the page less than it normally
+   would, until zoom brings the screen back under that size.
+   ---------------------------------------------------------------------- */
+html {
+  font-size: max(100%, min(100vw / 80, 100vh / 45));
+}
+
+
+/* -------------------------------------------------------------------------
+   Kiosk mode
+   -------------------------------------------------------------------------
+   Only ever present when the address carries ?kiosk. See js/bigscreen.js.
+   ---------------------------------------------------------------------- */
+
+/* A mouse left parked on the map hides after a few seconds, and comes back
+   the moment it moves. */
+html[data-pointer-idle],
+html[data-pointer-idle] * { cursor: none !important; }
+
+/* The countdown before a fresh landscape. A popover, so it sits in the
+   browser's top layer and shows over an open verdict or instructions
+   dialog - which is exactly where a visitor who walked away left things. */
+.kiosk-notice {
+  position: fixed;
+  inset: auto 0 1.5rem;
+  width: max-content;
+  max-width: calc(100vw - 2rem);
+  margin: 0 auto;
+  padding: 0.7rem 1.1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  color: var(--brand-ink);
+  background: var(--brand-surface-raised);
+  border: 1px solid var(--brand-line);
+  border-left: 0.3rem solid var(--brand-warning);
+  border-radius: var(--brand-radius);
+  box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 0.3);
+  pointer-events: none;
+}
+
+@media (forced-colors: active) {
+  .kiosk-notice { border: 2px solid CanvasText; box-shadow: none; }
+}

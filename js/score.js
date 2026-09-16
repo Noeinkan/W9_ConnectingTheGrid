@@ -10,9 +10,12 @@
 
    Scoring, for each laid segment i with land type t and technology k:
 
-       cost_i = cost(t)  * costMult(k)
-       env_i  = env(t)   * impactMult(k)
-       comm_i = comm(t)  * impactMult(k)
+       cost_i, env_i, comm_i = what CONFIG says one span of t costs on k
+
+   Read, not calculated. Lattice pylons are the ground's own cost,
+   envImpact and commImpact; every other technology is written out under
+   that ground's techs, because what a technology does depends on where it
+   is built.
 
    The totals are the sums, and each maps onto a 0-100 dial:
 
@@ -163,8 +166,8 @@ var Score = (function (CFG) {
 
     var SIDES = ['n', 'e', 's', 'w'];
     var ends = [
-      { name: 'start (generation site)', at: CFG.start, sideKey: 'entry' },
-      { name: 'end (demand centre)', at: CFG.end, sideKey: 'exit' }
+      { name: 'start (power station)', at: CFG.start, sideKey: 'entry' },
+      { name: 'end (grid supply point)', at: CFG.end, sideKey: 'exit' }
     ];
     for (var e = 0; e < ends.length; e++) {
       var end = ends[e];
@@ -221,28 +224,81 @@ var Score = (function (CFG) {
      Scoring
      ------------------------------------------------------------------- */
 
-  /* What one kind of ground costs on one technology.
+  /* One segment. Returns its cost and its environmental and community effect.
 
-     Ordinarily the technology multiplier applies: a harder technology makes
-     every metre of ground more expensive to build across. Ground marked
-     'fixedCost' is the exception, and connection funding is why it exists -
-     a grant is a fixed sum agreed in advance, and it does not grow because
-     the scheme chose to bury the line. Without this the multiplier would
-     work backwards on it and undergrounding through a grant would pay six
-     times over, which is not a trade-off, it is a bug with a story. */
-  function costOf(type, tech) {
-    return type.fixedCost ? type.cost : type.cost * tech.costMult;
-  }
+     There used to be one multiplier per technology, applied to every ground
+     alike, and it gave answers no planner would: burying a line through a
+     wood spared the trees, a T-pylon made a road closure quieter, and a
+     customer was worth less connected by cable. So the figures are now
+     written out per ground, and this only looks them up.
 
-  // One segment. Returns its cost and its environmental and community effect.
-  function scoreSegment(typeId, techId) {
+     `beside` says the square shares an edge with houses, and adds what
+     CONFIG.besideHomes charges this technology for being in their view.
+     It is a fact about where the square is, not what it is, so the caller
+     says it: see besideHomes below. */
+  function scoreSegment(typeId, techId, beside) {
     var type = cellType(typeId);
     var tech = technology(techId);
-    return {
-      cost: costOf(type, tech),
-      env: type.envImpact * tech.impactMult,
-      comm: type.commImpact * tech.impactMult
-    };
+    var own = tech.standard
+      ? { cost: type.cost, env: type.envImpact, comm: type.commImpact }
+      : type.techs && type.techs[tech.id];
+    if (!own) {
+      throw new Error('Cell type "' + typeId + '" has no figures for technology "' + techId + '"');
+    }
+    var extra = beside ? besideCommFor(tech.id) : 0;
+    return { cost: own.cost, env: own.env, comm: roundTo(own.comm + extra, 1) };
+  }
+
+  function besideCommFor(techId) {
+    var rule = CFG.besideHomes;
+    return (rule && rule.comm && rule.comm[techId]) || 0;
+  }
+
+  function isHome(typeId) {
+    var rule = CFG.besideHomes;
+    return !!rule && rule.homes.indexOf(typeId) !== -1;
+  }
+
+  /* Does the square at (col, row) share an edge with houses? `grid` is rows
+     of cell type ids, as the balance search holds a landscape; leave it out
+     to ask about the map in play. Corners do not count: a square only
+     touching houses diagonally is left alone, which keeps the rule one a
+     player can see at a glance on the board. */
+  function besideHomes(col, row, onGrid) {
+    var cells = onGrid || grid;
+    var around = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+    for (var i = 0; i < around.length; i++) {
+      var line = cells[row + around[i][1]];
+      var typeId = line && line[col + around[i][0]];
+      if (typeId && isHome(typeId)) { return true; }
+    }
+    return false;
+  }
+
+  /* The same question for every square at once, as rows of true and false -
+     what the balance search and the forecast read, so each asks it once per
+     landscape rather than once per state. */
+  function besideHomesGrid(onGrid) {
+    return onGrid.map(function (line, row) {
+      return line.map(function (typeId, col) { return besideHomes(col, row, onGrid); });
+    });
+  }
+
+  /* The one span a ground is shown with where there is room for only one -
+     the legend, and the first line of a square's tooltip. On the standard
+     technology, or, where that is not allowed, on the first that is: houses
+     are shown at what burying under them costs, not at what pylons over
+     them would, since pylons cannot go there. Null for ground nothing can
+     cross. The span carries the techId it was read on. */
+  function headlineSpan(typeId) {
+    var type = cellType(typeId);
+    if (!type.passable) { return null; }
+    var allowed = CFG.technologies.filter(function (tech) { return canUseTech(tech.id, typeId); });
+    if (!allowed.length) { return null; }
+    var pick = allowed.filter(function (tech) { return tech.standard; })[0] || allowed[0];
+    var span = scoreSegment(typeId, pick.id);
+    span.techId = pick.id;
+    return span;
   }
 
   // Turns raw totals into the three 0-100 dials.
@@ -256,7 +312,9 @@ var Score = (function (CFG) {
     };
   }
 
-  /* A route is an array of segments, each { col, row, typeId, techId }.
+  /* A route is an array of segments, each { col, row, typeId, techId,
+     beside }. `beside` is recorded when the span is laid, the way typeId
+     is, and a segment without it is read as not beside houses.
      Returns the raw totals, the three dials, and a few facts the game needs
      to decide whether the connection can be energised. */
   function scoreRoute(route) {
@@ -266,7 +324,7 @@ var Score = (function (CFG) {
 
     for (var i = 0; i < route.length; i++) {
       var segment = route[i];
-      var scored = scoreSegment(segment.typeId, segment.techId);
+      var scored = scoreSegment(segment.typeId, segment.techId, segment.beside);
       totals.cost += scored.cost;
       totals.env += scored.env;
       totals.comm += scored.comm;
@@ -304,12 +362,14 @@ var Score = (function (CFG) {
 
     for (var i = 0; i < route.length; i++) {
       var segment = route[i];
-      var key = segment.typeId + '|' + segment.techId;
+      // Spans beside houses are their own group: the same ground costs more there.
+      var beside = !!segment.beside;
+      var key = segment.typeId + '|' + segment.techId + (beside ? '|beside' : '');
       if (!groups[key]) {
-        groups[key] = { typeId: segment.typeId, techId: segment.techId, count: 0, cost: 0, env: 0, comm: 0 };
+        groups[key] = { typeId: segment.typeId, techId: segment.techId, beside: beside, count: 0, cost: 0, env: 0, comm: 0 };
         order.push(key);
       }
-      var scored = scoreSegment(segment.typeId, segment.techId);
+      var scored = scoreSegment(segment.typeId, segment.techId, beside);
       groups[key].count++;
       groups[key].cost += scored.cost;
       groups[key].env += scored.env;
@@ -321,6 +381,7 @@ var Score = (function (CFG) {
       return {
         typeId: g.typeId,
         techId: g.techId,
+        beside: g.beside,
         count: g.count,
         points: {
           cost: roundTo(-(g.cost / b.COST_BUDGET) * 100, p),
@@ -460,6 +521,51 @@ var Score = (function (CFG) {
     check('designated land count', groups[1].count, 2);
     check('designated land environment points', groups[1].points.env, -40);
 
+    // ---- The technology table -------------------------------------------
+    /* Every technology has figures on every ground it may be built on, and
+       they are shaped the way the balance search needs: whole tenths, so
+       its packed totals carry no floating point dust, and environment never
+       above zero, because its pruning assumes a route's environment can
+       only fall. A figure that breaks either would not fail loudly there -
+       it would quietly accept or reject the wrong maps. */
+    say('');
+    say('Technology table: every ground has usable figures for every technology');
+    var tableProblems = [];
+    var standards = CFG.technologies.filter(function (tech) { return tech.standard; }).length;
+    Object.keys(CFG.cellTypes).forEach(function (typeId) {
+      if (!CFG.cellTypes[typeId].passable) { return; }
+      CFG.technologies.forEach(function (tech) {
+        if (!canUseTech(tech.id, typeId)) { return; }
+        [false, true].forEach(function (beside) {
+          var where = typeId + (beside ? ' beside houses' : '') + ' on ' + tech.id;
+          var span;
+          try { span = scoreSegment(typeId, tech.id, beside); } catch (err) {
+            tableProblems.push(err.message);
+            return;
+          }
+          ['cost', 'env', 'comm'].forEach(function (field) {
+            var value = span[field];
+            if (typeof value !== 'number' || Math.abs(value * 10 - Math.round(value * 10)) > 1e-9) {
+              tableProblems.push(where + ': ' + field + ' ' + value + ' is not whole tenths');
+            }
+          });
+          if (span.env > 0) {
+            tableProblems.push(where + ': env ' + span.env + ' is above zero');
+          }
+        });
+      });
+    });
+    var extras = (CFG.besideHomes && CFG.besideHomes.comm) || {};
+    Object.keys(extras).forEach(function (techId) {
+      var value = extras[techId];
+      if (typeof value !== 'number' || Math.abs(value * 10 - Math.round(value * 10)) > 1e-9) {
+        tableProblems.push('besideHomes.comm.' + techId + ' ' + value + ' is not whole tenths');
+      }
+    });
+    check('exactly one standard technology', standards, 1);
+    check('problems in the table', tableProblems.length, 0);
+    tableProblems.forEach(function (problem) { say('          - ' + problem); });
+
     // ---- Map sanity -----------------------------------------------------
     /* Checked against a map written out here rather than whatever the
        generator last produced. A test that changes its own inputs every
@@ -486,6 +592,22 @@ var Score = (function (CFG) {
     setMap(TEST_MAP);
     check('typeAt reads the installed map', typeIdAt(6, 4), 'substation');
     check('off the map reads as nothing', typeIdAt(-1, 0), null);
+
+    /* Beside houses, on the same map. Column 8 of row 2 has houses to its
+       east; column 8 of row 5 only touches them at a corner, which does not
+       count; column 0 of row 0 is nowhere near. */
+    say('');
+    say('Assertion 4: a span beside houses pays for being in their view');
+    check('an edge shared with houses is beside them', besideHomes(8, 2), true);
+    check('a corner shared with houses is not', besideHomes(8, 5), false);
+    check('far from houses is not', besideHomes(0, 0), false);
+    check('the same answer from a grid passed in', besideHomesGrid(gridFrom(TEST_MAP))[2][8], true);
+    var rule = CFG.besideHomes.comm;
+    check('lattice beside houses adds its figure',
+      scoreSegment('farmland', 'lattice', true).comm, roundTo(CFG.cellTypes.farmland.commImpact + (rule.lattice || 0), 1));
+    check('a route reads the flag it was laid with',
+      scoreRoute([{ col: 8, row: 2, typeId: 'farmland', techId: 'lattice', beside: true }]).totals.comm,
+      roundTo(CFG.cellTypes.farmland.commImpact + (rule.lattice || 0), 1));
     if (before.length) { setMap(before); }
 
     say('');
@@ -512,8 +634,10 @@ var Score = (function (CFG) {
     canUseTech: canUseTech,
     piece: piece,
     pieceOpens: pieceOpens,
-    costOf: costOf,
     scoreSegment: scoreSegment,
+    headlineSpan: headlineSpan,
+    besideHomes: besideHomes,
+    besideHomesGrid: besideHomesGrid,
     scoreRoute: scoreRoute,
     contributions: contributions,
     dialsFor: dialsFor,

@@ -545,12 +545,15 @@ var MapArt = (function (CFG, Rng, MapSymbols) {
       });
     }
 
-    /* Two sheets, one exactly over the other. The lower carries everything
-       that never changes once the map is built, filters and all. The upper
-       carries what moves: the route, redrawn on every span, and the turning
-       wind turbines. The stylesheet gives the lower sheet a compositing
-       layer of its own, so nothing that happens on the upper one ever makes
-       the browser run the filters again. */
+    /* Two sheets, one exactly over the other. The lower carries the ground
+       itself - paper, fields, regions, filters and all, then the river bed
+       and the road - and never changes once the map is built. The upper
+       carries everything standing on that ground, because the trees and
+       reeds lean in the wind, and everything else that moves: the water,
+       traffic and smoke js/mapmotion.js adds, the turning wind turbines,
+       and the route, redrawn on every span. The stylesheet gives the lower
+       sheet a compositing layer of its own, so nothing that happens on the
+       upper one ever makes the browser run the filters again. */
     var root = sheet('art');
     var overlay = sheet('art art-overlay');
 
@@ -628,44 +631,54 @@ var MapArt = (function (CFG, Rng, MapSymbols) {
     // --- 3. the river and the road, as lines rather than as cells -------
     var ways = append(root, 'g', { class: 'art-ways' });
 
-    function centreLine(chain, extend) {
+    // The cell centres a way runs through, carried on to both edges of the map.
+    function centrePoints(chain) {
       if (!chain || chain.length < 2) { return null; }
       var points = chain.map(function (cell) {
         return [(cell[0] + 0.5) * U, (cell[1] + 0.5) * U];
       });
-      if (extend) {
-        points.unshift([points[0][0], 0]);
-        points.push([points[points.length - 1][0], rowCount * U]);
-      }
-      return throughPoints(points);
+      points.unshift([points[0][0], 0]);
+      points.push([points[points.length - 1][0], rowCount * U]);
+      return points;
     }
 
-    /* The river: a deeper channel down the middle of its bed, and broken
-       glints either side of it for the light on moving water. An earlier
+    /* The river: a deeper channel down the middle of its bed. The broken
+       glints either side of it, for the light on moving water, flow - so
+       they are drawn on the upper sheet by js/mapmotion.js. An earlier
        drawing ran one unbroken pale line down the centre, which read as a
        pipe rather than as a river. */
-    var riverLine = centreLine(features && features.river, true);
-    if (riverLine) {
+    var riverPoints = centrePoints(features && features.river);
+    if (riverPoints) {
+      var riverLine = throughPoints(riverPoints);
       append(ways, 'path', { class: 'art-river-deep', d: riverLine, fill: 'none' });
       append(ways, 'path', { class: 'art-river-core', d: riverLine, fill: 'none' });
-      append(ways, 'path', { class: 'art-river-glint', d: riverLine, fill: 'none', transform: 'translate(-9 0)' });
-      append(ways, 'path', { class: 'art-river-glint art-river-glint-2', d: riverLine, fill: 'none', transform: 'translate(9 0)' });
     }
 
-    var roadLine = centreLine(features && features.road, true);
-    if (roadLine) {
+    var roadPoints = centrePoints(features && features.road);
+    if (roadPoints) {
+      var roadLine = throughPoints(roadPoints);
       append(ways, 'path', { class: 'art-road-case', d: roadLine, fill: 'none' });
       append(ways, 'path', { class: 'art-road-top', d: roadLine, fill: 'none' });
       append(ways, 'path', { class: 'art-road-dash', d: roadLine, fill: 'none' });
     }
 
-    /* --- 4. what grows on the ground ------------------------------------
+    /* --- 4. what moves on the ground, on the upper sheet -----------------
+       Everything from here on goes on the upper sheet; see the note on the
+       two sheets. Left empty, like the route: js/mapmotion.js fills it from
+       the scene handed back with it. Under the trees, so the odd one
+       standing at the water's edge or in a roadside hedge still stands in
+       front of the water and the traffic. */
+    var lifeGround = append(overlay, 'g', { class: 'art-life art-life-ground' });
+
+    /* --- 5. what grows on the ground ------------------------------------
        Gathered first and planted afterwards, in order of how far down the
        map they sit, so anything nearer the bottom is drawn over anything
        behind it. Without that a tree can be sliced in half by the one
        standing behind it, and the wood goes flat. */
-    var cover = append(root, 'g', { class: 'art-cover' });
+    var cover = append(overlay, 'g', { class: 'art-cover' });
     var planted = [];
+    var ripples = [];   // wind on the water moves, so js/mapmotion.js draws them
+    var houses = [];    // and it lets smoke out of some of the chimneys
 
     for (var row = 0; row < rowCount; row++) {
       for (var col = 0; col < cols; col++) {
@@ -694,7 +707,10 @@ var MapArt = (function (CFG, Rng, MapSymbols) {
             ? 'art-tint-' + typeId + '-' + Math.floor(Rng.hash2(col, row, pick + 23) * plan.tints)
             : '';
 
-          planted.push({ x: x, y: y, size: size, symbol: which, tint: tint });
+          var item = { x: x, y: y, size: size, symbol: which, tint: tint };
+          if (which === 'ripple') { ripples.push(item); continue; }
+          if (which === 'house') { houses.push(item); }
+          planted.push(item);
         }
       }
     }
@@ -716,11 +732,12 @@ var MapArt = (function (CFG, Rng, MapSymbols) {
         width: n(item.size), height: n(item.size)
       };
       if (item.tint) { attributes.class = item.tint; }
-      append(cover, 'use', attributes);
+      // Kept, so js/mapmotion.js can set the trees and reeds swaying.
+      item.node = append(cover, 'use', attributes);
     });
 
-    // --- 5. landmarks ---------------------------------------------------
-    var marks = append(root, 'g', { class: 'art-marks' });
+    // --- 6. landmarks ---------------------------------------------------
+    var marks = append(overlay, 'g', { class: 'art-marks' });
 
     for (row = 0; row < rowCount; row++) {
       for (col = 0; col < cols; col++) {
@@ -735,8 +752,8 @@ var MapArt = (function (CFG, Rng, MapSymbols) {
       }
     }
 
-    // --- 6. the field lines ---------------------------------------------
-    var lines = append(root, 'g', { class: 'art-grid' });
+    // --- 7. the field lines ---------------------------------------------
+    var lines = append(overlay, 'g', { class: 'art-grid' });
     for (col = 1; col < cols; col++) {
       append(lines, 'line', { x1: col * U, y1: 0, x2: col * U, y2: rowCount * U });
     }
@@ -746,15 +763,19 @@ var MapArt = (function (CFG, Rng, MapSymbols) {
 
     // The fill goes on as an attribute: a url() written in the stylesheet
     // would be looked for relative to css/, not to this page.
-    append(root, 'rect', sheetRect('art-vignette')).setAttribute('fill', 'url(#art-vignette)');
+    append(overlay, 'rect', sheetRect('art-vignette')).setAttribute('fill', 'url(#art-vignette)');
 
-    /* --- 7. the two ends, on the upper sheet ----------------------------
-       Up here because the turbines turn; see the note on the two sheets. */
+    /* --- 8. what moves in the air ---------------------------------------
+       Left empty too, for the chimney smoke: over the houses it rises
+       from, and still under the line. */
+    var lifeAir = append(overlay, 'g', { class: 'art-life art-life-air' });
+
+    // --- 9. the two ends, whose turbines turn ----------------------------
     var ends = append(overlay, 'g', { class: 'art-ends' });
     MapSymbols.drawGenerationSite(ends, CFG.start.col * U, CFG.start.row * U);
     MapSymbols.drawDemandCentre(ends, CFG.end.col * U, CFG.end.row * U);
 
-    /* --- 8. the route --------------------------------------------------
+    /* --- 10. the route -------------------------------------------------
        Both left empty. js/routeart.js draws everything in them and repaints
        them as the game goes; nothing else in this file is touched again.
 
@@ -764,7 +785,15 @@ var MapArt = (function (CFG, Rng, MapSymbols) {
     var ghost = append(overlay, 'g', { class: 'art-ghost' });
     var route = append(overlay, 'g', { class: 'art-route' });
 
-    return { svg: root, overlay: overlay, route: route, ghost: ghost };
+    return {
+      svg: root, overlay: overlay, route: route, ghost: ghost,
+      life: { ground: lifeGround, air: lifeAir },
+      scene: {
+        salt: salt, width: cols * U,
+        river: riverPoints, road: roadPoints,
+        ripples: ripples, houses: houses, plants: planted
+      }
+    };
   }
 
   return {

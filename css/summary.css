@@ -115,7 +115,6 @@
    ---------------------------------------------------------------------- */
 .blind-note { display: none; }
 
-.app[data-blind] .meters,
-.app[data-blind] .tip-preview { display: none; }
+.app[data-blind] .meters { display: none; }
 
 .app[data-blind] .blind-note { display: block; margin-top: 0; }

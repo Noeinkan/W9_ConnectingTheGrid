@@ -8,8 +8,11 @@
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="img/marker-generation.svg" type="image/svg+xml">
 <link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/mapmotion.css">
 <link rel="stylesheet" href="css/guidance.css">
 <link rel="stylesheet" href="css/summary.css">
+<link rel="stylesheet" href="css/howto.css">
+<link rel="stylesheet" href="css/bigscreen.css">
 </head>
 <body>
 
@@ -22,12 +25,12 @@
     <h1 id="gameTitle">Connecting the Grid</h1>
     <div class="topbar-actions">
       <button type="button" class="btn" id="newMapButton"></button>
-      <button type="button" class="btn" id="dailyButton"></button>
-      <button type="button" class="btn" id="weeklyButton"></button>
       <button type="button" class="btn" id="undoButton"></button>
       <button type="button" class="btn" id="resetButton"></button>
       <button type="button" class="btn btn-quiet" id="instructionsTab"></button>
       <button type="button" class="btn btn-quiet" id="tourButton"></button>
+      <!-- Shown by js/bigscreen.js only where the browser can go full screen. -->
+      <button type="button" class="btn btn-quiet" id="fullscreenButton" hidden></button>
     </div>
   </header>
 
@@ -69,7 +72,7 @@
       </section>
 
       <section class="panel" aria-labelledby="techHeading">
-        <h2 id="techHeading">Technology</h2>
+        <h2 id="techHeading">Overhead line or cable</h2>
         <div class="tech-picker" id="tech"></div>
         <p class="hint" id="techHint"></p>
       </section>
@@ -138,11 +141,13 @@
 
 </div>
 
-<dialog class="sheet" id="instructionsDialog" aria-labelledby="instructionsHeading">
+<!-- Cards of pictures and short captions, built by js/howto.js. The Close
+     button's row sticks to the bottom of the sheet as it scrolls. -->
+<dialog class="sheet howto" id="instructionsDialog" aria-labelledby="instructionsHeading">
   <h2 id="instructionsHeading">How to play</h2>
   <p class="sheet-lead" id="instructionsLead"></p>
   <div id="instructionsBody"></div>
-  <form method="dialog">
+  <form method="dialog" class="howto-foot">
     <button type="submit" class="btn" id="instructionsClose"></button>
   </form>
 </dialog>
@@ -186,14 +191,19 @@
        advice   config, score
        mapsymbols  nothing
        mapart   config, rng, mapsymbols
+       mapmotion   rng, mapart, mapsymbols
        routeart config, mapart
-       render   config, score, mapart, routeart
+       render   config, score, mapart, routeart, mapmotion
        guidance config, score, advice, render
        tour     config
+       howtoboard   config, rng, advice, mapart, routeart, mapsymbols
+       howtoart     config, score, advice, howtoboard
+       howto        config, howtoart
        archetypes   config, rng, mapgen, balance
        summary      config, score
        summarypanel config, summary, archetypes
        game     all of the above
+       bigscreen    config, render, tour, game
 -->
 <script src="js/config.js"></script>
 <script src="js/rng.js"></script>
@@ -205,13 +215,18 @@
 <script src="js/archetypes.js"></script>
 <script src="js/mapsymbols.js"></script>
 <script src="js/mapart.js"></script>
+<script src="js/mapmotion.js"></script>
 <script src="js/routeart.js"></script>
 <script src="js/render.js"></script>
 <script src="js/guidance.js"></script>
 <script src="js/tour.js"></script>
+<script src="js/howtoboard.js"></script>
+<script src="js/howtoart.js"></script>
+<script src="js/howto.js"></script>
 <script src="js/summary.js"></script>
 <script src="js/summarypanel.js"></script>
 <script src="js/game.js"></script>
+<script src="js/bigscreen.js"></script>
 
 </body>
 </html>

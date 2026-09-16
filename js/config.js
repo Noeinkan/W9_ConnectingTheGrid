@@ -5,8 +5,9 @@
    THIS IS THE ONLY FILE YOU NEED TO EDIT TO REBALANCE THE GAME.
 
    Everything tunable lives here: the map generator, the cost/impact numbers,
-   the technology multipliers, the scoring budgets and every word of on-screen
-   text. No other file contains a magic number or a hard-coded string.
+   what each technology does on each ground, the scoring budgets and every
+   word of on-screen text. No other file contains a magic number or a
+   hard-coded string.
 
    Quick guide for non-developers
    ------------------------------
@@ -34,10 +35,10 @@ var CONFIG = {
   /* Where the new connection begins. 'entry' is the side of that square the
      line arrives on, so the first piece laid must have an opening facing it.
      With the start on column 0, 'w' means the line comes in from the
-     generation site off the left edge. */
+     power station off the left edge. */
   start: { col: 0, row: 4, entry: 'w' },
 
-  /* Where it must end: the demand centre, on the right edge. 'exit' is the
+  /* Where it must end: the grid supply point, on the right edge. 'exit' is the
      side the line must leave by, so the last piece must open that way. */
   end: { col: 10, row: 4, exit: 'e' },
 
@@ -120,9 +121,21 @@ var CONFIG = {
      CELL TYPES
      One entry per kind of land the route can cross.
 
-       cost         how much money one cell of this land costs to cross
-       envImpact    environmental harm, always zero or negative
-       commImpact   community effect, negative = harm, positive = benefit
+       cost         how much money one cell of this land costs to cross on
+                    lattice pylons, the standard overhead line
+       envImpact    environmental harm on lattice pylons, always zero or
+                    negative
+       commImpact   community effect on lattice pylons, negative = harm,
+                    positive = benefit
+       techs        the same three numbers for the other technologies, as
+                    { cost, env, comm }. Written out per ground rather than
+                    worked out from one multiplier, because what a
+                    technology does depends on where it is built: a cable
+                    trench is what a town wants and what a wood does not.
+                    Leave out only a technology whose bansTerrain names this
+                    ground. Every figure to one decimal place and env never
+                    above zero - the balance search relies on both, and the
+                    scoring self test checks them.
        passable     false means the route can never enter this cell
        icon         the SVG file drawn in the cell
        texture      how the land is DRAWN on the map, which is presentation
@@ -138,12 +151,22 @@ var CONFIG = {
                                   Use it for single places worth finding.
        density      'scatter' only. Roughly what share of the cells get a
                     symbol, 0 to 1. Higher means denser cover.
-       description  the plain-English line shown when the cell is inspected
+       description  the plain-English line on what the land is, shown when
+                    the pointer rests on its row of the legend
        tip          one short line saying what this ground means for the
                     ROUTE - the penalty, the detour, the exception - shown
-                    under the numbers in the tooltip and after "Explain
-                    last span". The description says what the land is;
-                    this says why the player should care.
+                    after "Explain last span". The description says what the
+                    land is; this says why the player should care.
+       brief        the tip cut down to ten words or so, for the land card
+                    that appears over a square. It is read mid-move, on top
+                    of the map, so it has to be taken in at a glance.
+       pick         the technology the land card stars for this ground, by
+                    id. Leave it out where no one technology is the answer,
+                    or where every one does the same.
+       pickBeside   the same for a square of this ground beside houses (see
+                    BESIDE HOMES), where overhead spans cost extra community
+                    support and the answer can change. Leave it out to keep
+                    pick there too.
      --------------------------------------------------------------------- */
   cellTypes: {
     farmland: {
@@ -156,7 +179,14 @@ var CONFIG = {
       icon: 'img/farmland.svg',
       texture: 'plain',
       description: 'Open agricultural land. The easiest and cheapest ground to build across.',
-      tip: 'The baseline. Nothing here counts against you but the span itself.'
+      tip: 'Lattice pylons. Nothing here needs sparing, so any other technology is money for nothing.',
+      brief: 'The cheapest ground there is. Nothing here to spare.',
+      pick: 'lattice',
+      pickBeside: 'tpylon',
+      techs: {
+        tpylon: { cost: 1.4, env: 0, comm: 0 },
+        cable:  { cost: 6,   env: 0, comm: 0 }
+      }
     },
     road: {
       id: 'road',
@@ -167,8 +197,17 @@ var CONFIG = {
       passable: true,
       icon: 'img/road.svg',
       texture: 'plain',
-      description: 'A public road. Working over live traffic means closures and disruption.',
-      tip: 'Road crossing: closures and disruption cost community support whichever way you cross.'
+      description: 'A public road. Stringing a line over live traffic means scaffold guarding, closures and disruption.',
+      tip: 'Lattice pylons. What upsets people is the road works, not the pylons, and a cable trench closes the road for longer.',
+      brief: 'Road works upset people. Burying makes it worse.',
+      pick: 'lattice',
+      pickBeside: 'tpylon',
+      /* The objection is the closure, so a quieter pylon earns nothing, and
+         digging the road up to bury the line makes it worse. */
+      techs: {
+        tpylon: { cost: 4.2, env: 0, comm: -2 },
+        cable:  { cost: 18,  env: 0, comm: -3 }
+      }
     },
     rocky: {
       id: 'rocky',
@@ -180,21 +219,40 @@ var CONFIG = {
       icon: 'img/rocky.svg',
       texture: 'scatter',
       density: 0.75,
-      description: 'Hard rock. Foundations need blasting and piling, which costs time and money.',
-      tip: 'Blasting and piling put the price up, and do a little harm to the ground.'
+      description: 'Hard rock. Pylon foundations and cable trenches need blasting and piling, which costs time and money.',
+      tip: 'Lattice pylons. A pylon needs a few blasted foundations; a cable needs a trench blasted the whole way, at ten times the price.',
+      brief: 'A trench through rock costs ten times what pylons do.',
+      pick: 'lattice',
+      pickBeside: 'tpylon',
+      /* A T-pylon's single foundation disturbs a little less rock. A cable
+         trench is blasted end to end: far dearer, and more harm, not less. */
+      techs: {
+        tpylon: { cost: 5.6, env: -0.7, comm: 0 },
+        cable:  { cost: 40,  env: -2,   comm: 0 }
+      }
     },
     hilly: {
       id: 'hilly',
       label: 'Hills',
       cost: 3,
       envImpact: 0,
-      commImpact: 0,
+      commImpact: -1,
       passable: true,
       icon: 'img/hilly.svg',
       texture: 'scatter',
       density: 0.7,
-      description: 'Steep ground. Awkward access for plant and cranes, but nothing sensitive.',
-      tip: 'Awkward access puts the price up, but nothing here is sensitive.'
+      description: 'Steep, high ground. Access tracks for plant and cranes are awkward to build, and a pylon on the skyline is seen for miles.',
+      tip: 'T-pylons if local support is tight: a third shorter, they barely break the skyline. A trench up the slopes is very dear and leaves a scar that washes out.',
+      // No pick: lattice or T-pylon depends on how much support is left.
+      brief: 'Pylons are seen for miles. T-pylons if support is tight.',
+      pickBeside: 'tpylon',
+      /* What people object to on hills is the view, which is what T-pylons
+         were designed for. Trenching a steep slope costs a great deal and
+         invites erosion. */
+      techs: {
+        tpylon: { cost: 4.2, env: 0,  comm: -0.3 },
+        cable:  { cost: 30,  env: -1, comm: 0 }
+      }
     },
     woodland: {
       id: 'woodland',
@@ -206,8 +264,19 @@ var CONFIG = {
       icon: 'img/woodland.svg',
       texture: 'scatter',
       density: 0.8,
-      description: 'Established trees. A route through here means felling and a permanent cleared swathe.',
-      tip: 'Felling a swathe harms the environment. A T-pylon softens it; cable almost removes it.'
+      description: 'Established trees. An overhead line through here means felling, and a corridor kept clear of trees for as long as the line stands.',
+      tip: 'Lattice pylons, or better, go round. Burying does not save the trees: the trench needs a felled strip that is never replanted.',
+      brief: 'Every technology fells trees. Go round if you can.',
+      pick: 'lattice',
+      pickBeside: 'tpylon',
+      /* The harm is the felling, and every technology fells. A T-pylon holds
+         the wires nearer the canopy, so its corridor is no narrower; a cable
+         needs a construction swathe cleared and a strip kept free of roots
+         for good, which is only a little narrower. */
+      techs: {
+        tpylon: { cost: 4.2, env: -3,   comm: 0 },
+        cable:  { cost: 18,  env: -2.4, comm: 0 }
+      }
     },
     river: {
       id: 'river',
@@ -218,8 +287,15 @@ var CONFIG = {
       passable: true,
       icon: 'img/river.svg',
       texture: 'plain',
-      description: 'A watercourse. Long spans and tall towers are needed. Cable cannot be laid through it.',
-      tip: 'River crossing: every route makes one. Cable is not allowed, so a buried line has to come up to cross.'
+      description: 'A watercourse. An overhead line crosses it on a long span between taller pylons. Underground cable cannot be laid through it.',
+      tip: 'Lattice pylons. Every route crosses once, and the long span needs tall towers whatever carries the rest of the line. Cable cannot go through.',
+      brief: 'Every route crosses once, on tall towers. No cable.',
+      pick: 'lattice',
+      pickBeside: 'tpylon',
+      // The crossing towers are special either way, so a T-pylon spares nothing.
+      techs: {
+        tpylon: { cost: 7, env: -2, comm: 0 }
+      }
     },
     sssi: {
       id: 'sssi',
@@ -231,8 +307,17 @@ var CONFIG = {
       icon: 'img/sssi.svg',
       texture: 'scatter',
       density: 0.5,
-      description: 'Protected habitat. Building here does serious and hard-to-reverse ecological damage.',
-      tip: 'The heaviest environmental harm on the map. Going round is almost always worth the extra spans.'
+      description: 'Protected habitat, such as a Site of Special Scientific Interest. Building here does serious and hard-to-reverse ecological damage.',
+      tip: 'Go round if you possibly can. If not, T-pylons: their single foundation takes the least habitat. A cable trench digs the habitat up.',
+      brief: 'Go round. If you must cross, T-pylons harm least.',
+      pick: 'tpylon',
+      /* The one place the T-pylon is the answer: its small footprint is what
+         matters here. A trench through protected habitat is no better than
+         pylons over it, at six times the price. */
+      techs: {
+        tpylon: { cost: 5.6, env: -5.6, comm: 0 },
+        cable:  { cost: 24,  env: -8,   comm: 0 }
+      }
     },
     settlement: {
       id: 'settlement',
@@ -245,7 +330,22 @@ var CONFIG = {
       texture: 'scatter',
       density: 0.85,
       description: 'Where people live and work. Overhead lines here draw strong and sustained objection.',
-      tip: 'The heaviest community penalty on the map. If the line must pass here, this is where cable earns its price.'
+      tip: 'Underground cable only: no pylon, lattice or T, may stand over homes. Go round the town, or bury the line under its streets.',
+      brief: 'No pylons over homes. Go round, or bury the line.',
+      pick: 'cable',
+      /* Pylons are not allowed here at all - see bansTerrain on lattice and
+         T-pylons - so the cost, envImpact and commImpact above describe a
+         line that cannot be built, and are never scored. A penalty would not
+         do instead: the verdict follows the weakest meter, and a route
+         with community support to spare would still take pylons over
+         houses whenever that was cheaper. Under the streets the cable costs
+         street works and a little disruption: twice what pylons would, where
+         open country costs six times, because a town's streets are dug up
+         for services anyway. Any dearer and a town across the way round
+         leaves no balanced route at all - measured with archetypes.js. */
+      techs: {
+        cable: { cost: 4, env: 0, comm: -1 }
+      }
     },
     customer: {
       id: 'customer',
@@ -256,8 +356,16 @@ var CONFIG = {
       passable: true,
       icon: 'img/customer.svg',
       texture: 'landmark',
-      description: 'A site waiting for a connection. Route through it and they get connected.',
-      tip: 'Gives community support back. Worth a small detour.'
+      description: 'A generator or large user in the connection queue. Route through it and they get connected.',
+      tip: 'Gives community support back whatever carries the line, so lattice pylons. Worth a small detour.',
+      brief: 'Wins support on any technology. Worth a detour.',
+      pick: 'lattice',
+      pickBeside: 'tpylon',
+      // A customer is connected just the same by any technology.
+      techs: {
+        tpylon: { cost: 2.8, env: 0, comm: 6 },
+        cable:  { cost: 12,  env: 0, comm: 6 }
+      }
     },
     benefit: {
       id: 'benefit',
@@ -269,24 +377,37 @@ var CONFIG = {
       icon: 'img/benefit.svg',
       texture: 'landmark',
       description: 'Land offered under a community benefit scheme. Welcomed locally, and free to cross.',
-      tip: 'Free to cross and welcomed locally. Worth a small detour.'
+      tip: 'Free to cross and welcomed locally, whatever carries the line. Worth a small detour.',
+      /* No pick: every technology is the same here. Beside houses the cable
+         costs no more and draws no objection. */
+      brief: 'Free, and welcomed locally. Worth a detour.',
+      pickBeside: 'cable',
+      techs: {
+        tpylon: { cost: 0, env: 0, comm: 4 },
+        cable:  { cost: 0, env: 0, comm: 4 }
+      }
     },
     grant: {
       id: 'grant',
       label: 'Connection funding',
-      /* The only ground on the map that GIVES cost back, which is why it is
-         marked fixedCost: a grant is a sum agreed in advance and does not
-         grow because the scheme chose a dearer technology. Every other
-         number here behaves exactly as it does everywhere else. */
+      /* The only ground on the map that GIVES cost back. The same -4 on
+         every technology: a grant is a sum agreed in advance and does not
+         grow because the scheme chose a dearer one. */
       cost: -4,
-      fixedCost: true,
       envImpact: 0,
       commImpact: 0,
       passable: true,
       icon: 'img/grant.svg',
       texture: 'plain',
       description: 'A funded connection point. Routing through it brings money to the scheme, but it is nowhere near the direct line.',
-      tip: 'Pays cost back, and the same sum whichever technology crosses it.'
+      tip: 'Pays cost back, and the same sum whichever technology crosses it.',
+      // As for community benefit: no pick, and cable beside houses.
+      brief: 'Pays money back, whatever crosses it.',
+      pickBeside: 'cable',
+      techs: {
+        tpylon: { cost: -4, env: 0, comm: 0 },
+        cable:  { cost: -4, env: 0, comm: 0 }
+      }
     },
     substation: {
       id: 'substation',
@@ -297,8 +418,16 @@ var CONFIG = {
       passable: true,
       icon: 'img/substation.svg',
       texture: 'landmark',
-      description: 'A switching and transformer site. The connection must pass through one to be energised.',
-      tip: 'The line must pass through one. Pick the one that suits the rest of your route.'
+      description: 'Switchgear and transformers, where lines join the network and the voltage steps up or down. The connection must pass through one to be energised.',
+      tip: 'The line must pass through one, on lattice pylons: the switchgear does the same harm whatever arrives. Pick the one that suits the rest of your route.',
+      brief: 'The line must pass through one. Pick one that suits.',
+      pick: 'lattice',
+      pickBeside: 'tpylon',
+      // The harm is the substation's own, so no technology spares any of it.
+      techs: {
+        tpylon: { cost: 8.4, env: -1, comm: 0 },
+        cable:  { cost: 36,  env: -1, comm: 0 }
+      }
     },
     water: {
       id: 'water',
@@ -310,56 +439,74 @@ var CONFIG = {
       icon: 'img/water.svg',
       texture: 'plain',
       description: 'A lake or reservoir. The route cannot cross it.',
-      tip: 'The line has to go round, so a lake near the direct line means a detour.'
+      tip: 'The line has to go round, so a lake near the direct line means a detour.',
+      brief: 'The line cannot cross. It has to go round.'
     }
   },
 
 
   /* -----------------------------------------------------------------------
      TECHNOLOGIES
-     The choice made before laying each segment.
+     The choice made before laying each segment. What each one costs and
+     spares is not here: it depends on the ground, so it lives with each
+     entry in CELL TYPES, under techs. Lattice is the standard those
+     entries are written against.
 
-       costMult     multiplies the land cost for that segment
-       impactMult   multiplies BOTH the environmental and community numbers,
-                    so a low multiplier also shrinks any positive community
-                    benefit, not just the harm
+       standard     true on exactly one technology: the one a ground's own
+                    cost, envImpact and commImpact describe
        bansTerrain  cell type ids this technology can never be used on
+       summary      where this technology is the right answer, in a few
+                    words - shown in the legend and read out on its button
      --------------------------------------------------------------------- */
   technologies: [
     {
       id: 'lattice',
-      label: 'Lattice tower',
+      label: 'Lattice pylons',
       short: 'Lattice',
-      costMult: 1.0,
-      impactMult: 1.0,
-      bansTerrain: [],
-      summary: 'Standard cost, full impact',
-      description: 'The conventional steel tower. Cheapest to build, and the most visible in the landscape.'
+      standard: true,
+      bansTerrain: ['settlement'],
+      summary: 'the cheapest, and the right answer on most ground',
+      description: 'Overhead line on conventional steel lattice pylons. Cheapest to build, and the tallest and most visible. Not allowed over homes.'
     },
     {
       id: 'tpylon',
-      label: 'T-pylon',
+      label: 'T-pylons',
       short: 'T-pylon',
-      costMult: 1.4,
-      impactMult: 0.7,
-      bansTerrain: [],
-      summary: '1.4x cost, 0.7x impact',
-      description: 'A shorter single-shaft design with a smaller footprint. Costs more, but sits far more quietly.'
+      bansTerrain: ['settlement'],
+      summary: 'shorter and slimmer, for squares beside houses, hills and designated land',
+      description: 'Overhead line on T-pylons: a single shaft about a third shorter than a lattice pylon, with a smaller footprint. Costs more; worth it on high ground, where a lattice pylon is seen for miles, and on designated land you cannot go round. Not allowed over homes.'
     },
     {
       id: 'cable',
       label: 'Underground cable',
       short: 'Cable',
-      costMult: 6.0,
-      impactMult: 0.2,
       bansTerrain: ['river'],
-      summary: '6x cost, 0.2x impact, no rivers',
-      description: 'Buried out of sight entirely. Enormously expensive, and it cannot be taken through a river.'
+      summary: 'the only way through houses, and a harmful trench anywhere else',
+      description: 'The line goes underground, out of sight. The only way through a town. Anywhere else it is very expensive, and the trench does its own harm to woods, habitat, hills and rock. It cannot be laid through a river.'
     }
   ],
 
   // Which technology is selected when the game starts or is reset.
   defaultTechnology: 'lattice',
+
+
+  /* -----------------------------------------------------------------------
+     BESIDE HOMES
+     Pylons may not stand over houses, but a line on the square next door is
+     still in people's view from their windows. A span on any square that
+     shares an edge with houses costs this much community support on top of
+     whatever its own ground costs - and how much depends on how much of
+     the line people can see, which is the whole case for T-pylons.
+
+       homes   cell type ids that count as houses
+       comm    the extra community figure, per technology id. Whole tenths,
+               like every figure in CELL TYPES; a technology left out adds
+               nothing
+     --------------------------------------------------------------------- */
+  besideHomes: {
+    homes: ['settlement'],
+    comm: { lattice: -3, tpylon: -1, cable: 0 }
+  },
 
 
   /* -----------------------------------------------------------------------
@@ -387,12 +534,12 @@ var CONFIG = {
      Eleven columns are shared out like this, and the numbers below are what
      hold that arrangement together:
 
-        0        the generation site
+        0        the power station
         1 - 2    the road, running the full height of the map
         3 - 6    the designated land, a wavy band two to three cells thick
                  sitting somewhere inside them
         7 - 9    the river, running the full height of the map
-        9 - 10   the town, and the demand centre
+        9 - 10   the town, and the grid supply point
 
      The substations are not given a column of their own. They are put on
      the first clear ground east of the designated land, wherever that turns
@@ -512,9 +659,16 @@ var CONFIG = {
       id: 'community',
       weight: 1,
       label: 'Community pressure',
-      hint: 'The town stands across the way round. Staying clear of the habitat means passing homes, or paying to bury the line.',
+      hint: 'The town stands across the way round, and nobody has offered land. Pass it on T-pylons, bury the line under its streets, or cross the habitat.',
       weekly: true,
-      generator: { town: { side: 'gap', cells: 8 } },
+      /* No pylons may stand over houses, so the town is passed beside, where
+         pylons cost support, or under, where cable costs money. Benefit land
+         on the way round would pay all of that back, which is why there is
+         none here: without it the town's objection is still felt at the end. */
+      generator: {
+        town: { side: 'gap', cells: 5 },
+        rewards: { benefit: 0, customers: 1, grants: 2 }
+      },
       accept: { dialBelow: { comm: 90 } }
     },
     {
@@ -531,7 +685,13 @@ var CONFIG = {
       label: 'Knife edge',
       hint: 'Nothing here can be kept comfortable. A balanced route has to run close to the line on all three dials.',
       weekly: true,
-      generator: { town: { side: 'gap', cells: 8 }, river: { banks: 1 } },
+      // Rarely accepted - about one in five - so given the long way round's rerolls.
+      maxTries: 60,
+      generator: {
+        town: { side: 'gap', cells: 5 },
+        river: { banks: 1 },
+        rewards: { benefit: 0, customers: 1, grants: 2 }
+      },
       accept: { everyDialAtMost: 85 }
     },
     {
@@ -599,7 +759,7 @@ var CONFIG = {
       /* The last line of the "Why?" note on a meter that has dropped, after
          the list of where its points went. Say what moves this dial, in a
          sentence a player can act on. */
-      whyHint: 'Cable costs six times what a lattice tower does, and every extra span adds up. Connection funding gives some back.'
+      whyHint: 'Underground cable costs four to ten times what lattice pylons do - least under a town, most through rock - and every extra span adds up. Connection funding gives some back.'
     },
     {
       id: 'env',
@@ -607,7 +767,7 @@ var CONFIG = {
       goodDirection: 'A high score means little harm to habitats and landscape.',
       lowLabel: 'Serious harm',
       highLabel: 'Well protected',
-      whyHint: 'Designated land does the most harm, then woodland. A T-pylon cuts harm by nearly a third; cable by four fifths.'
+      whyHint: 'Designated land does the most harm, then woodland: go round them. On designated land T-pylons cut the harm by nearly a third. Burying spares nothing, because the trench does its own damage.'
     },
     {
       id: 'comm',
@@ -615,7 +775,7 @@ var CONFIG = {
       goodDirection: 'A high score means the route is welcome locally.',
       lowLabel: 'Strong objection',
       highLabel: 'Well supported',
-      whyHint: 'Houses and roads cost support; customers and benefit land give it back. Quieter technology softens both, the good with the bad.'
+      whyHint: 'Houses and roads cost support; customers and benefit land give it back, whatever carries the line. Through houses, bury the line: underground cable takes almost all the objection away.'
     }
   ],
 
@@ -688,7 +848,7 @@ var CONFIG = {
 
   /* -----------------------------------------------------------------------
      VERDICTS
-     Shown when the route reaches the demand centre. The dial with the
+     Shown when the route reaches the grid supply point. The dial with the
      LOWEST score decides which verdict appears. 'balanced' is used when
      every dial finishes at or above balancedThreshold.
      --------------------------------------------------------------------- */
@@ -697,28 +857,29 @@ var CONFIG = {
   verdicts: {
     balanced: {
       title: 'A route that will get consent',
-      body: 'This is the sort of scheme that gets through a planning inquiry without a fight. ' +
+      body: 'This is the sort of scheme that gets through a development consent examination without a fight. ' +
             'You have kept the spend proportionate, stayed out of the designated land, and not ' +
-            'put a line over anybody\'s roof. Nothing here is free, but every trade-off you made ' +
-            'is one you could defend in a hearing. Good work.'
+            'put an overhead line over anybody\'s roof. Nothing here is free, but every trade-off you made ' +
+            'is one you could defend at an examination hearing. Good work.'
     },
     cost: {
       title: 'Sound engineering, unaffordable scheme',
       body: 'Environmentally and socially this route is hard to argue with. The problem is the ' +
             'bill. Undergrounding and long detours are the two most reliable ways to spend money ' +
-            'on a transmission connection, and this route uses both. A scheme that cannot be ' +
-            'funded does not get built, and a connection that does not get built helps nobody.'
+            'on a transmission connection, and this route uses both. Every pound of it ends up on ' +
+            'consumers\' energy bills. A scheme that cannot justify its cost does not get built, ' +
+            'and a connection that does not get built helps nobody.'
     },
     env: {
-      title: 'This will not survive an environmental assessment',
+      title: 'This will not survive an Environmental Impact Assessment',
       body: 'You have taken the direct line, and the direct line goes straight through protected ' +
-            'habitat. Designated land is not a matter of negotiation. An assessment on this route ' +
-            'would stop it, and the years lost to the argument would cost more than routing around ' +
+            'habitat. Designated land is not a matter of negotiation. The Environmental Impact ' +
+            'Assessment on this route would sink it at examination, and the years lost to the argument would cost more than routing around ' +
             'it ever would have. Go back and treat the designated land as a wall, not a shortcut.'
     },
     comm: {
       title: 'Technically fine, politically finished',
-      body: 'On paper this is a competent route. In practice you have run a transmission line past ' +
+      body: 'On paper this is a competent route. In practice you have run an overhead line past ' +
             'people\'s homes, and they will fight it for as long as it takes. Every objection is a ' +
             'delay and every delay is a cost. Where you cannot avoid a community, that is exactly ' +
             'where the money for undergrounding is best spent.'
@@ -733,14 +894,13 @@ var CONFIG = {
      --------------------------------------------------------------------- */
   copy: {
     title: 'Connecting the Grid',
-    strapline: 'Route a new transmission connection from the generation site to the demand centre.',
+    strapline: 'Route a new transmission connection from the power station to the grid supply point.',
 
-    startLabel: 'Generation site',
-    endLabel: 'Demand centre',
+    startLabel: 'Power station',
+    endLabel: 'Grid supply point',
 
     // The top bar
     newMapButton: 'New landscape',
-    dailyButton: "Today's landscape",
     tabInstructions: 'How to play',
     undo: 'Undo',
     reset: 'Start again',
@@ -752,19 +912,21 @@ var CONFIG = {
     seedGo: 'Go',
     errSeedEmpty: 'Type the name of a landscape first.',
 
-    techHeading: 'Technology',
+    techHeading: 'Overhead line or cable',
     techHint: 'Change it as often as you like. It applies to the next span you build, not to the ones already up.',
 
     dialsHeading: 'Points',
 
-    statusReady: 'Click an arrow to send the first span out of the generation site.',
-    statusRouting: '{n} spans built. Keep going east to the demand centre.',
+    statusReady: 'Click an arrow to send the first span out of the power station.',
+    statusRouting: '{n} spans built. Keep going east to the grid supply point.',
     statusComplete: 'Connection energised.',
     statusStuck: 'The line has nowhere left to go. Undo the last span, or start again.',
-    statusNotEnergised: 'You have reached the demand centre, but the route does not pass through a substation. Undo and route through one.',
-    statusWrongEndPiece: 'You have reached the demand centre, but the line runs past it rather than into it. It has to arrive from the {side}.',
+    statusNotEnergised: 'You have reached the grid supply point, but the route does not pass through a substation. Undo and route through one.',
+    statusWrongEndPiece: 'You have reached the grid supply point, but the line runs past it rather than into it. It has to arrive from the {side}.',
 
     errWrongSquare: 'The line cannot jump. Carry on from the highlighted square.',
+    // The same, once there is a line to go back along and Undo is allowed.
+    errWrongSquareTakeBack: 'The line cannot jump. Carry on from the highlighted square, or click a square on the line to go back to it.',
     errNoStraight: 'The line cannot carry straight on from here. Use one of the arrows.',
     errPieceDoesNotFit: 'The line cannot double back on itself. Pick another direction.',
     errStartPiece: 'The line arrives from the {side}, so it cannot set off that way.',
@@ -799,7 +961,6 @@ var CONFIG = {
     difficultyLabel: 'Difficulty',
 
     // This week's landscape: one of the particular kinds, the same all week.
-    weeklyButton: "This week's",
     seedWeeklyLabel: "This week's landscape",
     shareWeekly: 'Connecting the Grid - week {week}',
     // Read out before the kind of landscape, e.g. "Kind of landscape: Knife edge."
@@ -835,42 +996,166 @@ var CONFIG = {
        is a choice about what comes NEXT. */
     chevronLabel: 'Send the line to the {side}, into {terrain}.',
     chevronDeadLabel: 'The line cannot go this way.',
-    tipImpassable: 'Cannot be crossed',
 
     // Read out for the four compass directions, in the messages above.
     sides: { n: 'top', e: 'right', s: 'bottom', w: 'left' },
 
-    // The instructions overlay. Each string is one paragraph.
+    /* The How to play sheet: a picture for every idea, and a sentence or
+       two under it. The picture shows how the thing works; the words name
+       it. The pictures are hidden from screen readers, so every card has to
+       make sense with its picture taken away.
+
+       'picture' names the drawing in js/howtoart.js, and 'wide' lets a card
+       take the whole width of the sheet. {threshold} is balancedThreshold.
+       Everything else a picture shows - the land, the numbers, the verdicts,
+       the labels on the buttons - comes from the rest of this file, so it
+       cannot drift from the game. */
     instructionsHeading: 'How to play',
-    instructions: [
-      'Draw a transmission line from the generation site on the left to the demand centre on the right. The line can only ever leave the square it is standing on, so there is only ever one square in play - the highlighted one.',
-      'Click one of the arrows on that square to send the line that way. Clicking the square itself carries straight on, and you can hold the mouse down and drag to draw a run in one go. Dragging back over the line rubs it out.',
-      'From the keyboard: arrow keys move around the map, and an arrow key pressed on the highlighted square sends the line that way. Hold Shift with the arrow to look that way first without building. Press 1, 2 or 3 to change technology, and E to have the last span explained.',
-      'Choose the technology before each span. Lattice towers are cheapest and the most visible; T-pylons cost more and sit more quietly; underground cable hides the line almost entirely but is enormously expensive, and cannot be taken through a river.',
-      'Hover over any square to see what the land is and what crossing it costs. On the square in play, the dashed marks inside the three meters show where each one lands if you build it - change technology and watch them move. That is the trade-off, before you have paid for it rather than after.',
-      'The arrows say what they lead into, and an arrow into water, off the map or back into the line is marked as a dead end. Most ground costs you something; a funded connection point pays you back, but it is never near the direct line.',
-      'Under the meters, Best finish still open is the best score any route from where the line has got to can still reach. It never says which way to go, but when a span costs points you cannot get back the map tints that span and the status line says so. Why? beside a meter lists where its points went.',
-      'The line must pass through a substation to be energised, and it must arrive at the demand centre rather than run past it.',
-      'Every landscape is generated and checked before you see it, so a balanced route always exists. New landscape rolls another one, and Today\'s landscape is the one everybody else is playing today. When you finish, the verdict says what the best route found here scores, and can draw it on the map.',
-      'Landscapes come in kinds, named beside the landscape\'s name: a narrow gap, a town across the way round, a river with no cheap crossing, and more. This week\'s landscape is always one of the particular kinds, and stays the same all week. Blind mode hides every score until the connection is finished, so the route has to be read off the land alone.'
-    ],
+    howTo: {
+      sections: [
+        {
+          title: 'The goal',
+          cards: [
+            {
+              picture: 'goal', wide: true,
+              title: 'Connect the power station to the grid',
+              body: 'Build a line from the power station on the left to the grid supply point on the right, where the transmission network hands power to the local distribution network. It must pass through a substation on the way, and arrive at the grid supply point rather than run past it.'
+            }
+          ]
+        },
+        {
+          title: 'Building the line',
+          cards: [
+            {
+              picture: 'step',
+              title: 'One square in play',
+              body: 'The line can only leave the square it has reached, so only the highlighted square is in play. Click an arrow on it to send the line that way.'
+            },
+            {
+              picture: 'drag',
+              title: 'Carry on, or drag',
+              body: 'Click the highlighted square itself to carry straight on, or hold the mouse down and drag to draw a whole run in one go.'
+            },
+            {
+              picture: 'back',
+              title: 'Change your mind',
+              body: 'Click any square already on the line to take the line back to it, and choose again from there. Dragging back over the line rubs it out.'
+            },
+            {
+              picture: 'trap',
+              title: 'Dead ends are marked',
+              body: 'An arrow into water, off the map or back into the line is dashed in red: the line would be stuck there. Hover over an arrow to see where it leads.'
+            }
+          ]
+        },
+        {
+          title: 'Choosing what to build',
+          cards: [
+            {
+              picture: 'techs', wide: true,
+              title: 'Overhead line or underground cable',
+              body: 'Choose before each span, the way a planner would. Lattice pylons are cheapest and right on most ground. T-pylons cost more but are shorter and slimmer: worth it on hills, beside houses, and on designated land you cannot go round. Underground cable is the only way through houses; anywhere else it is very expensive, the trench does its own harm, and it cannot be laid through a river.'
+            },
+            {
+              picture: 'land', wide: true,
+              title: 'Every square has a price',
+              body: 'Each span pays for the ground it is built on, in cost, environment and community, and an overhead span beside houses costs community support as well. Hover over any square on the map to see what it costs on each technology. Connection funding pays you back, but it is never near the direct line.'
+            }
+          ]
+        },
+        {
+          title: 'Reading the score',
+          cards: [
+            {
+              picture: 'preview',
+              title: 'See it before you build',
+              body: 'The dashed mark in each meter shows where that dial lands if you build the highlighted square. Change technology and watch the marks move: that is the trade-off, before you have paid for it.'
+            },
+            {
+              picture: 'verdict',
+              title: 'The weakest dial decides',
+              body: 'Cost, environment and community each start at 100. Arrive with all three at {threshold} or more and the route gets consent; otherwise the verdict is about the lowest.'
+            },
+            {
+              picture: 'forecast',
+              title: 'Best finish still open',
+              body: 'The best score any route from here can still reach. It never says which way to go, but a span that costs points you cannot get back is tinted on the map.'
+            },
+            {
+              picture: 'why',
+              title: 'Ask why',
+              body: 'Why? beside a meter lists where its points went. Explain, or the E key, says what the last span did.'
+            }
+          ]
+        },
+        {
+          /* Keys rather than cards. The caps are drawn for the eye; a screen
+             reader hears 'spoken' instead of each cap in turn. */
+          title: 'From the keyboard',
+          keys: [
+            { keys: ['←', '↑', '→', '↓'], spoken: 'Arrow keys', does: 'Move around the map. On the highlighted square, send the line that way.' },
+            { keys: ['Shift', '+', '→'], spoken: 'Shift with an arrow key', does: 'Look that way first, without building.' },
+            { keys: ['1', '2', '3'], spoken: '1, 2 or 3', does: 'Change technology: lattice pylons, T-pylons or underground cable.' },
+            { keys: ['E'], spoken: 'E', does: 'Explain the last span.' },
+            { keys: ['Enter'], spoken: 'Enter', does: 'On a square of the line, take the line back to it.' }
+          ]
+        },
+        {
+          title: 'Landscapes',
+          cards: [
+            {
+              picture: 'best', wide: true,
+              title: 'A route that gets consent always exists',
+              body: 'Every landscape is generated and checked before you see it. When you finish, the verdict says what the best route found here scores, and can draw it on the map.'
+            },
+            {
+              picture: 'kinds',
+              title: 'Every landscape has a name and a kind',
+              body: 'New landscape rolls another one. Its kind is named beside its name: a narrow gap, a town across the way round, a river with no cheap crossing, and more. Type a name to play that landscape again.'
+            },
+            {
+              picture: 'modes',
+              title: 'Two ways to make it harder',
+              body: 'Committed mode keeps every span up once it is built. Blind mode hides every score until the connection is finished, so the route has to be read off the land alone.'
+            }
+          ]
+        }
+      ],
+
+      /* Where each technology is the right answer, drawn as ground with a
+         tick on it. Cell type ids, and 'besideHomes' for any square next to
+         houses. Where a technology may NOT go is not listed here: that is a
+         rule, and the picture reads it from bansTerrain. */
+      suits: {
+        lattice: ['farmland', 'road', 'woodland', 'river'],
+        tpylon: ['hilly', 'sssi', 'besideHomes'],
+        cable: ['settlement']
+      },
+
+      // Words drawn inside the pictures.
+      labels: {
+        nextSpan: 'Next span: {terrain}',
+        landKey: 'One span on {tech}: cost / environment / community',
+        onlyTech: '{tech} only',
+        cannotCross: 'Cannot be crossed',
+        besideHomes: 'Beside houses',
+        yourRoute: 'Your route',
+        bestRoute: 'Best route found',
+        or: 'or'
+      }
+    },
 
     // How each cell is described to a screen reader. The {braces} are filled
     // in by the game, so keep them exactly as they are.
     cellPosition: 'Column {col}, row {row}.',
     cellTerrain: '{terrain}. Cost {cost}, environment {env}, community {comm}.',
-    cellRouted: 'Span {n} of the route, {piece}, carried on {tech}.',
+    cellRouted: 'Span {n} of the route, {piece}: {tech}.',
     cellAvailable: 'This is where the line goes next.',
     cellExits: 'It can leave towards the {sides}.',
-    cellIsStart: 'Generation site, where the route begins.',
-    cellIsEnd: 'Demand centre, where the route must finish.',
+    cellIsStart: 'Power station, where the route begins.',
+    cellIsEnd: 'Grid supply point, where the route must finish.',
     cellIsHead: 'End of the route so far.',
-
-    /* Spoken and shown in the tooltip when the square under the pointer is
-       the one the next span goes on: where the three dials land if it is
-       built on the technology currently chosen. The meters show the same
-       thing as a ghost marker, which a screen reader cannot see. */
-    tipPreview: 'Building here on {tech}: cost {cost}, environment {env}, community {comm}.',
+    cellTakeBack: 'Press to take the line back to this square and choose again from here.',
 
     // The three meters.
     meterReading: '{label}: {value} out of 100, {band}.',
@@ -891,7 +1176,7 @@ var CONFIG = {
     forecastOnCourse: 'Consent still within reach',
     forecastAtBest: 'At best now: {verdict}',
     forecastBelowFloor: 'Every way on found from here leaves a dial below {floor}.',
-    forecastBlocked: 'No way on to the demand centre found from here without doubling back.',
+    forecastBlocked: 'No way on to the grid supply point found from here without doubling back.',
     forecastDone: 'Finished: {verdict}',
     forecastHint: 'The best weakest dial any route onward from here can still reach. It never says which way to go - only how much is still on the table.',
     forecastSpoken: 'Best finish still open: {weakest}. {line}',
@@ -901,8 +1186,8 @@ var CONFIG = {
     moodSlipped: '{n} spans built. That one cost {drop} off the best finish still open.',
     moodLost: 'That span put a route that gets consent out of reach. Undo it to win the chance back.',
     moodLostCommitted: 'That span put a route that gets consent out of reach, and in Committed mode it stays down.',
-    moodBlocked: 'That span leaves no way on to the demand centre without doubling back. Undo it.',
-    moodBlockedCommitted: 'That span leaves no way on to the demand centre without doubling back.',
+    moodBlocked: 'That span leaves no way on to the grid supply point without doubling back. Undo it.',
+    moodBlockedCommitted: 'That span leaves no way on to the grid supply point without doubling back.',
     // On the tooltip and the screen reader label of a span already built.
     routeMoodSlipped: 'This span cost {drop} off the best finish.',
     routeMoodLost: 'This span put a route that gets consent out of reach.',
@@ -924,12 +1209,12 @@ var CONFIG = {
     explainDropped: 'The best finish still open fell from {before} to {after}.',
     explainLost: 'The best finish still open fell from {before} to {after}, which puts a route that gets consent out of reach.',
     explainGone: 'After it, no way on was found that keeps every dial above {floor}.',
-    explainBlocked: 'After it, no way on to the demand centre was found without doubling back.',
+    explainBlocked: 'After it, no way on to the grid supply point was found without doubling back.',
 
     /* Holding Shift and pressing an arrow key on the highlighted square
        looks down that way without building anything. */
     previewExit: 'To the {side}: {terrain}, {cost} / {env} / {comm} a span on {tech}. Press the arrow without Shift to send the line there.',
-    previewFinish: 'To the {side} is the way into the demand centre. Press the arrow without Shift to finish.',
+    previewFinish: 'To the {side} is the way into the grid supply point. Press the arrow without Shift to finish.',
     previewOffMap: 'To the {side} is the edge of the map. The line would have nowhere to go.',
     previewWater: 'To the {side} is open water. The line would be stuck there.',
     previewUsed: 'To the {side} the route already runs, and the line cannot cross itself.',
@@ -950,13 +1235,21 @@ var CONFIG = {
     techEffectSpoken: '{tech}. One span on {terrain}: cost {cost}, environment {env}, community {comm}.',
     techBannedSpoken: '{tech} cannot be used on {terrain}.',
 
-    // The tooltip's table of what the square costs on each technology.
+    // The land card's table of what the square costs on each technology.
     tipTechBanned: 'not allowed',
 
+    /* A square that shares an edge with houses - see besideHomes. The label
+       names it wherever spans are listed by ground; the note says why the
+       figures there are not the ground's usual ones. The note sits on the
+       land card over the map, whose table already shows by how much, so
+       it only says why. */
+    besideHomesLabel: '{terrain} beside houses',
+    besideHomesNote: 'Beside houses: pylons here are in people\'s view.',
+
     // The legend's line on what technology does to its numbers.
-    legendTech: '{tech}: {cost}x cost, {impact}x impact',
-    legendTechBans: 'not on {terrain}',
-    legendTechFixed: 'Connection funding is the same sum on every technology.',
+    legendTech: '{tech}: {summary}',
+    legendTechBans: 'never on {terrain}',
+    legendTechWhere: 'The figures above are on lattice, or on cable where pylons are not allowed. On a square beside houses, pylons also cost community support. Hover any square for all three.',
 
     /* The "Why?" note on a meter that has dropped. */
     meterWhy: 'Why?',
@@ -976,6 +1269,15 @@ var CONFIG = {
     tourDone: 'Start playing',
     tourSkip: 'Skip the tour',
     tourCount: '{n} of {total}',
+
+    /* On a big screen: the full-screen button in the top bar, and the
+       countdown kiosk mode shows before it puts up a fresh landscape. See
+       js/bigscreen.js. {n} is the seconds left. */
+    fullscreenEnter: 'Full screen',
+    fullscreenLeave: 'Leave full screen',
+    kioskIdleNotice: 'Still playing? A fresh landscape in {n} s. Touch anything to carry on.',
+    kioskIdleSpoken: 'Nobody has played for a while. A fresh landscape starts in {n} seconds unless something is pressed.',
+
     tour: [
       {
         at: 'target',
@@ -985,7 +1287,7 @@ var CONFIG = {
       {
         at: 'tech',
         title: 'Choose what to build',
-        body: 'Pick a technology before each span, or press 1, 2 or 3. Each button shows what one span on the highlighted square costs on it: cost / environment / community.'
+        body: 'Pick lattice pylons, T-pylons or underground cable before each span, or press 1, 2 or 3. Lattice suits most ground, T-pylons designated land, cable houses. Each button shows what one span on the highlighted square costs on it: cost / environment / community.'
       },
       {
         at: 'meters',
@@ -1000,7 +1302,7 @@ var CONFIG = {
       {
         at: 'end',
         title: 'Where to finish',
-        body: 'Arrive at the demand centre from the left, having passed through a substation on the way. Hover over any square to see what crossing it costs, or hold Shift and press an arrow key to look before you build.'
+        body: 'Arrive at the grid supply point from the left, having passed through a substation on the way. Hover over any square to see what crossing it costs, or hold Shift and press an arrow key to look before you build.'
       }
     ]
   },
@@ -1014,6 +1316,24 @@ var CONFIG = {
   precision: {
     totals: 2,
     dials: 1
+  },
+
+
+  /* -----------------------------------------------------------------------
+     KIOSK MODE
+     For a screen at a show, and only when the address carries ?kiosk. The
+     game growing to fit a big screen needs no setting: see
+     css/bigscreen.css. How these are used is in js/bigscreen.js.
+     --------------------------------------------------------------------- */
+  kiosk: {
+    /* With anything left behind - a route started, a dialog or the tour
+       open, a switch changed - this long without a touch, a key or the
+       mouse moving puts a fresh landscape up for the next visitor. */
+    idleResetSeconds: 120,
+    // The last part of that wait, counted down on screen.
+    idleWarningSeconds: 15,
+    // The mouse pointer hides after this long without moving.
+    pointerHideSeconds: 3
   },
 
 

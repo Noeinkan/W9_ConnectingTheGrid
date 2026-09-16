@@ -11,18 +11,20 @@
    The map is drawn in three layers, all exactly the same size and stacked
    on top of each other:
 
-     the landscape   two decorative SVGs, built by js/mapart.js
+     the landscape   two decorative SVGs, built by js/mapart.js, and the
+                     cloud shadows over them, from js/mapmotion.js
      the board       a grid of real <button> elements, transparent
      the arrows      where the line can go next, over the target square
 
    The route is drawn into the upper of the two SVGs, over the landscape,
    by js/routeart.js: the landscape is built once per map and the route is
-   rebuilt on every move.
+   rebuilt on every move. What moves by itself in the landscape - water,
+   traffic, trees, smoke, clouds - is built once with it, and left to CSS.
 
    Exposes one global: Render.
    ========================================================================= */
 
-var Render = (function (CFG, Score, MapArt, RouteArt) {
+var Render = (function (CFG, Score, MapArt, RouteArt, MapMotion) {
   'use strict';
 
   var NS = 'http://www.w3.org/2000/svg';
@@ -72,6 +74,8 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
     els.art.innerHTML = '';
     els.art.appendChild(drawn.svg);
     els.art.appendChild(drawn.overlay);
+    // Fills the overlay's empty life groups, and hands back the sky to lay on top.
+    els.art.appendChild(MapMotion.draw(drawn.life, drawn.scene));
 
     /* The board's shape is read by the map frame, the button grid, the
        arrows and the tooltip, so it is set once here, on the box they all
@@ -180,6 +184,7 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
   function wireDragging(container, handlers) {
     var drawing = false;
     var last = null;
+    var moved = false;   // did this press go on to cross into another square?
 
     function cellAt(event) {
       var box = container.getBoundingClientRect();
@@ -191,6 +196,7 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
     }
 
     container.addEventListener('pointerdown', function (event) {
+      moved = false;
       var at = cellAt(event);
       if (!at || !handlers.canStartDrag(at.col, at.row)) { return; }
       drawing = true;
@@ -203,7 +209,20 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
       var at = cellAt(event);
       if (!at || (last && at.col === last.col && at.row === last.row)) { return; }
       last = at;
+      moved = true;
       handlers.onDragOver(at.col, at.row);
+    });
+
+    /* A press that never left its square is a click. But the capture above
+       makes the browser send that click to the board instead of the square
+       (Chromium does, measured), so the square's own handler never hears
+       it - and clicking the highlighted square or the end of the line did
+       nothing at all. The board passes it on. Only clicks aimed at the board
+       itself: one that reached a square was handled there already. */
+    container.addEventListener('click', function (event) {
+      if (event.target !== container || moved) { return; }
+      var at = cellAt(event);
+      if (at) { handlers.onActivate(at.col, at.row); }
     });
 
     function stop(event) {
@@ -241,6 +260,8 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
         var isEnd = (col === CFG.end.col && row === CFG.end.row);
         var isTarget = !!target && target.col === col && target.row === row;
         var isHead = !!here && here.index === state.route.length - 1;
+        // Clicking a square on the line takes the line back to it.
+        var canTakeBack = !!here && state.canUndo;
 
         // --- classes ---
         var classes = ['cell'];
@@ -253,11 +274,12 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
         var parts = [fill(copy.cellPosition, { col: col + 1, row: row + 1 })];
         if (isStart) { parts.push(copy.cellIsStart); }
         if (isEnd) { parts.push(copy.cellIsEnd); }
+        var headline = Score.headlineSpan(typeId) || { cost: 0, env: 0, comm: 0 };
         parts.push(fill(copy.cellTerrain, {
           terrain: type.label,
-          cost: type.cost,
-          env: spoken(type.envImpact),
-          comm: spoken(type.commImpact)
+          cost: headline.cost,
+          env: spoken(headline.env),
+          comm: spoken(headline.comm)
         }));
         if (here) {
           parts.push(fill(copy.cellRouted, {
@@ -266,6 +288,7 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
             tech: Score.technology(here.segment.techId).label
           }));
           if (isHead) { parts.push(copy.cellIsHead); }
+          if (canTakeBack) { parts.push(copy.cellTakeBack); }
         } else if (isTarget) {
           parts.push(copy.cellAvailable);
           if (state.exits) {
@@ -279,8 +302,8 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
         button.setAttribute('aria-label', parts.join(' '));
 
         // Every cell stays focusable so the map can be read right through,
-        // but only the target square is actually actionable.
-        button.setAttribute('aria-disabled', isTarget ? 'false' : 'true');
+        // but only the target square and the line itself are actionable.
+        button.setAttribute('aria-disabled', isTarget || canTakeBack ? 'false' : 'true');
       }
     }
   }
@@ -368,19 +391,47 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
   function clearGhostRoute() { paintGhostRoute(null); }
 
   /* ---------------------------------------------------------------------
-     The land tooltip
+     The land card
+     ---------------------------------------------------------------------
+     What the square under the pointer is, read mid-move: the land's icon
+     and name, and one short line on what it means for the route. Small on
+     purpose, because it sits over the map it describes - the longer
+     description is on the legend, and where the dials would land is
+     already shown by the ghost markers on the meters.
      ------------------------------------------------------------------- */
 
-  /* The square the next span goes on, if the game has told us where that
-     is. Kept here so showTip can say what building it would do - the ghost
-     marker on the meters is invisible to a screen reader, and this is the
-     same reading in words. */
-  var preview = null;
-  var previewAt = null;
+  /* A small line icon for each dial, drawn in the text colour: a pound sign
+     for cost, a leaf for environment, two people for community. For the
+     places too narrow to write the dial's name, such as the land card. */
+  var DIAL_ICONS = {
+    cost: ['M11.5 4.8a2.8 2.8 0 0 0-5.1 1.6V13',
+           'M4 13h8',
+           'M4.5 9h5'],
+    env:  ['M3.5 12.5C3.5 7 7 3.5 12.5 3.5c0 5.5-3.5 9-9 9z',
+           'M2 14l7-7'],
+    comm: ['M6 7.2a2.1 2.1 0 1 0 0-4.2 2.1 2.1 0 0 0 0 4.2z',
+           'M2 13c0-2.3 1.8-4 4-4s4 1.7 4 4',
+           'M11.2 7.6a1.7 1.7 0 1 0 0-3.4 1.7 1.7 0 0 0 0 3.4z',
+           'M11.5 9.3c1.5.2 2.5 1.6 2.5 3.4']
+  };
 
-  function setPreview(state) {
-    preview = state.preview || null;
-    previewAt = state.target ? { col: state.target.col, row: state.target.row } : null;
+  function dialIcon(id) {
+    var art = svgNode('svg', {
+      viewBox: '0 0 16 16', focusable: 'false', 'aria-hidden': 'true', 'class': 'dial-icon'
+    });
+    (DIAL_ICONS[id] || []).forEach(function (d) { art.appendChild(svgNode('path', { d: d })); });
+    return art;
+  }
+
+  /* A land's colour and symbol, on the legend's swatch and the card's icon
+     alike. See the note in buildLegend on why the image is set here. */
+  function dressLand(element, typeId) {
+    var type = CFG.cellTypes[typeId];
+    element.style.setProperty('--land',
+      'var(--brand-land-' + typeId + ', var(--brand-land-farmland))');
+    if (type.icon) {
+      element.style.backgroundImage = 'url("' + type.icon + '")';
+    }
   }
 
   function showTip(col, row) {
@@ -389,37 +440,34 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
     var type = CFG.cellTypes[typeId];
 
     els.tip.innerHTML = '';
+    var head = document.createElement('span');
+    head.className = 'tip-head';
+
+    var icon = document.createElement('span');
+    icon.className = 'tip-icon';
+    dressLand(icon, typeId);
+
     var name = document.createElement('strong');
+    name.className = 'tip-name';
     name.textContent = type.label;
-    var description = document.createTextNode(type.description);
-    var nums = document.createElement('span');
-    nums.className = 'tip-nums';
-    nums.textContent = type.passable
-      ? type.cost + ' / ' + type.envImpact + ' / ' + type.commImpact
-      : CFG.copy.tipImpassable;
 
-    els.tip.appendChild(name);
-    els.tip.appendChild(description);
-    els.tip.appendChild(nums);
+    var brief = document.createElement('span');
+    brief.className = 'tip-brief';
+    brief.textContent = type.brief || type.description;
 
-    // Only on the square actually in play, where it is a live reading
-    // rather than a hypothetical about a square the line cannot reach.
-    if (preview && previewAt && previewAt.col === col && previewAt.row === row) {
-      var ahead = document.createElement('span');
-      ahead.className = 'tip-preview';
-      ahead.textContent = fill(CFG.copy.tipPreview, {
-        tech: Score.technology(preview.techId).short,
-        cost: preview.dials.cost,
-        env: preview.dials.env,
-        comm: preview.dials.comm
-      });
-      els.tip.appendChild(ahead);
-    }
+    head.appendChild(icon);
+    head.appendChild(name);
+    head.appendChild(brief);
+    els.tip.appendChild(head);
 
+    /* Above the square, or below it on the top rows where there is no room,
+       and slid inwards on the two side columns so it does not spill off the
+       map. The pointer on the card follows the slide - see css/style.css. */
     els.tip.style.setProperty('--cx', col + 0.5);
     els.tip.style.setProperty('--cy', row + (row <= 1 ? 1 : 0));
     if (row <= 1) { els.tip.setAttribute('data-below', ''); }
     else { els.tip.removeAttribute('data-below'); }
+    els.tip.dataset.edge = col === 0 ? 'left' : col === CFG.grid.cols - 1 ? 'right' : '';
 
     /* Anything else worth saying about the square is added by whoever
        registered for it - js/guidance.js - into this same box, last, so it
@@ -449,7 +497,7 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
       button.className = 'tech tech-' + tech.id;
       button.dataset.tech = tech.id;
       button.setAttribute('aria-pressed', 'false');
-      button.setAttribute('aria-label', tech.label + '. ' + tech.summary + '. ' + tech.description);
+      button.setAttribute('aria-label', tech.label + ': ' + tech.summary + '. ' + tech.description);
       button.title = tech.description;
 
       var swatch = document.createElement('span');
@@ -587,6 +635,8 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
     Object.keys(CFG.cellTypes).forEach(function (typeId) {
       var type = CFG.cellTypes[typeId];
       var item = document.createElement('li');
+      // The land card over the map has only room for a short line; the full description is here.
+      item.title = type.description;
 
       /* The swatch is dressed from here rather than from a per-type CSS
          rule, which is what lets a new kind of ground be added in config.js
@@ -602,11 +652,7 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
       var swatch = document.createElement('span');
       swatch.className = 'swatch';
       swatch.setAttribute('aria-hidden', 'true');
-      swatch.style.setProperty('--land',
-        'var(--brand-land-' + typeId + ', var(--brand-land-farmland))');
-      if (type.icon) {
-        swatch.style.backgroundImage = 'url("' + type.icon + '")';
-      }
+      dressLand(swatch, typeId);
 
       var label = document.createElement('span');
       label.className = 'swatch-label';
@@ -614,13 +660,14 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
 
       var nums = document.createElement('span');
       nums.className = 'swatch-nums';
-      nums.textContent = type.passable
-        ? type.cost + ' / ' + type.envImpact + ' / ' + type.commImpact
+      var headline = Score.headlineSpan(typeId);
+      nums.textContent = headline
+        ? headline.cost + ' / ' + headline.env + ' / ' + headline.comm
         : '—';
-      nums.setAttribute('aria-label', type.passable
-        ? 'cost ' + type.cost +
-          ', environment ' + spoken(type.envImpact) +
-          ', community ' + spoken(type.commImpact)
+      nums.setAttribute('aria-label', headline
+        ? 'cost ' + headline.cost +
+          ', environment ' + spoken(headline.env) +
+          ', community ' + spoken(headline.comm)
         : 'cannot be crossed');
 
       item.appendChild(swatch);
@@ -766,16 +813,6 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
     }
   }
 
-  function buildInstructions(container) {
-    if (!container) { return; }
-    container.innerHTML = '';
-    CFG.copy.instructions.forEach(function (line) {
-      var p = document.createElement('p');
-      p.textContent = line;
-      container.appendChild(p);
-    });
-  }
-
   // Shown once, when the connection is energised.
   var verdictShown = false;
 
@@ -869,7 +906,6 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
     setText(els.verdictBest, copy.verdictBest);
     setText(els.verdictShare, copy.verdictShare);
     setText(els.verdictShareHint, copy.verdictShareHint);
-    setText(els.daily, copy.dailyButton);
     setText(els.seedGo, copy.seedGo);
     setText(els.committedLabel, copy.committedLabel);
     setText(els.committedHint, copy.committedHint);
@@ -880,7 +916,6 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
   }
 
   function paint(state) {
-    setPreview(state);
     paintBoard(state);
     paintChevrons(state);
     paintRoute(state);
@@ -899,7 +934,6 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
     buildTechPicker: buildTechPicker,
     buildMeters: buildMeters,
     buildLegend: buildLegend,
-    buildInstructions: buildInstructions,
     openDialog: openDialog,
     closeDialog: closeDialog,
     setCursor: setCursor,
@@ -911,9 +945,10 @@ var Render = (function (CFG, Score, MapArt, RouteArt) {
     showShareFallback: showShareFallback,
     showTip: showTip,
     decorateTip: decorateTip,
+    dialIcon: dialIcon,
     hideTip: hideTip,
     paint: paint,
     elements: els
   };
 
-}(CONFIG, Score, MapArt, RouteArt));
+}(CONFIG, Score, MapArt, RouteArt, MapMotion));

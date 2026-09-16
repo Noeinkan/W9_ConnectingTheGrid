@@ -178,13 +178,13 @@
 .chevron.is-trap {
   color: var(--guide-map-loss);
   background: var(--brand-map-paper);
-  border: 2px dashed var(--guide-map-loss);
+  border: 0.125rem dashed var(--guide-map-loss);
 }
 
 /* The arrow being looked down with Shift and an arrow key. */
 .chevron.is-looking {
-  outline: 3px solid var(--brand-map-paper);
-  outline-offset: 2px;
+  outline: 0.1875rem solid var(--brand-map-paper);
+  outline-offset: 0.125rem;
   transform: translate(-50%, -50%) scale(1.15);
 }
 
@@ -244,43 +244,73 @@
   font-variant-numeric: tabular-nums;
   color: var(--mood-ink);
   background: var(--mood);
-  border: 1.5px solid var(--brand-map-paper);
+  border: 0.094rem solid var(--brand-map-paper);
   border-radius: 999px;
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  box-shadow: 0 0.0625rem 0.1875rem rgb(0 0 0 / 0.35);
   pointer-events: none;
 }
 
 
 /* -------------------------------------------------------------------------
-   The tooltip's extra lines
+   The land card's numbers
+   -------------------------------------------------------------------------
+   One row per technology, a column per dial under its icon. The chosen
+   technology is the highlighted row, and the one that belongs on this
+   square is starred. Harm is red and help green, but every figure keeps
+   its sign, so colour is never the only way to tell.
    ---------------------------------------------------------------------- */
-.tip { max-width: 16rem; }
 
-.tip .tip-note {
+/* Beside houses the figures are not the ground's usual ones: say so first. */
+.tip .tip-beside {
   display: block;
-  margin-top: 0.3rem;
+  margin-top: 0.4rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: var(--brand-radius-sm);
+  font-weight: 600;
+  color: var(--brand-warning);
+  background: color-mix(in srgb, var(--brand-warning) 14%, transparent);
 }
 
-/* The square's numbers on each technology, the chosen one ticked. */
 .tip .tip-techs {
-  display: grid;
-  grid-template-columns: auto auto;
-  gap: 0 0.7rem;
-  margin-top: 0.35rem;
-  padding-top: 0.3rem;
+  display: block;
+  margin-top: 0.4rem;
+  padding-top: 0.25rem;
   border-top: 1px solid var(--brand-line);
-  font-size: 0.68rem;
+  font-size: 0.7rem;
   font-variant-numeric: tabular-nums;
 }
-.tip .tip-tech-nums { text-align: right; color: var(--brand-ink-muted); }
-.tip .tip-techs .is-chosen { font-weight: 700; color: var(--brand-ink); }
-.tip .tip-tech-name.is-chosen::after { content: " \2713"; color: var(--brand-accent); }
+.tip .tip-row {
+  display: grid;
+  grid-template-columns: 1fr repeat(3, 2.1rem);
+  align-items: center;
+  min-height: 1.3rem;
+  padding: 0 0.35rem;
+  border-radius: var(--brand-radius-sm);
+}
+.tip .tip-row-head { min-height: 1.1rem; color: var(--brand-ink-muted); }
+.tip .tip-dial { display: flex; justify-content: flex-end; }
+.tip .tip-val { text-align: right; }
+
+.tip .tip-tech { display: flex; align-items: center; gap: 0.35rem; white-space: nowrap; }
+.tip .tip-tech .tech-swatch { flex: none; width: 0.8rem; height: 0.2rem; }
+.tip .tip-pick { color: var(--brand-warning); }
+
+.tip .tip-row.is-chosen { font-weight: 700; background: var(--brand-accent-soft); }
+.tip .tip-val.is-zero { color: var(--brand-ink-muted); }
+.tip .tip-val.is-bad  { color: var(--brand-negative); font-weight: 700; }
+.tip .tip-val.is-good { color: var(--brand-positive); font-weight: 700; }
+
+.tip .tip-row.is-banned { color: var(--brand-ink-muted); }
+.tip .tip-banned { grid-column: 2 / -1; text-align: right; font-style: italic; }
 
 .tip .tip-mood {
   display: block;
-  margin-top: 0.3rem;
+  margin-top: 0.4rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: var(--brand-radius-sm);
   font-weight: 600;
   color: var(--brand-negative);
+  background: color-mix(in srgb, var(--brand-negative) 14%, transparent);
 }
 
 
@@ -301,14 +331,14 @@
   z-index: 61;
   border-radius: var(--brand-radius);
   box-shadow: 0 0 0 200vmax rgb(0 0 0 / 0.55);
-  outline: 3px solid var(--brand-map-paper);
+  outline: 0.1875rem solid var(--brand-map-paper);
   pointer-events: none;
   transition: left 220ms ease, top 220ms ease, width 220ms ease, height 220ms ease;
 }
 .tour-card {
   position: fixed;
   z-index: 62;
-  width: min(21rem, calc(100vw - 24px));
+  width: min(21rem, calc(100vw - 1.5rem));
   padding: 1rem 1.1rem 0.9rem;
   color: var(--brand-ink);
   background: var(--brand-surface-raised);

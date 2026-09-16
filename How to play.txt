@@ -1,0 +1,39 @@
+CONNECTING THE GRID - HOW TO PLAY
+=================================
+
+A browser game about routing a new electricity line across a map.
+It runs in your web browser, installs nothing and works offline.
+
+
+ON WINDOWS
+----------
+
+1. If the game came as a zip file, extract it first: right-click the zip,
+   choose "Extract All...", then click "Extract". The game will not start
+   from inside the zip.
+
+2. In the extracted folder, double-click "Play Connecting the Grid.exe".
+   The game opens in your web browser.
+
+3. The first time, Windows may show a blue box titled
+   "Windows protected your PC". It appears because the program is not
+   signed by a registered publisher, not because anything was found in it.
+   Click "More info", then "Run anyway". Windows asks only once.
+
+Keep the program inside the game folder. Moved anywhere else, it cannot find
+the game and shows a message saying so.
+
+
+ON MAC OR LINUX, OR IF THE PROGRAM WILL NOT RUN
+-----------------------------------------------
+
+Double-click "index.html" in the same folder. It opens the same game.
+
+If it opens as text in an editor instead of as a game, right-click
+"index.html", choose "Open with", and pick your web browser.
+
+
+WHAT YOU NEED
+-------------
+
+A recent web browser: Edge, Chrome, Firefox or Safari.

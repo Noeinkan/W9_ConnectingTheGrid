@@ -1,0 +1,158 @@
+/* =========================================================================
+   Connecting the Grid - the landscape, moving
+   =========================================================================
+
+   The motion js/mapmotion.js lays over the map: the current in the river,
+   traffic on the road, wind on the lakes and in the trees and reeds,
+   chimney smoke, cloud shadows.
+
+   Kept deliberately slow and faint. The map is where the player thinks, and
+   anything that moves pulls the eye; this has to read as weather, never as
+   something asking to be looked at. The one thing on the map that is meant
+   to catch the eye - the pulsing target square - is on the board above all
+   of this and stays the loudest thing there.
+
+   Everything here animates only transform, opacity or a dash offset, and
+   all of it lives on the upper sheet or in its own boxes, never on the
+   filtered lower sheet. See the note at the top of js/mapmotion.js.
+   ---------------------------------------------------------------------- */
+
+/* The river. The glints keep their look from css/style.css; here they only
+   flow, each loop moving exactly one dash and gap so it has no seam. The
+   one nearer the east bank runs a little slower. */
+.art-life .art-river-glint   { animation: river-flow 3.2s linear infinite; }
+.art-life .art-river-glint-2 { animation: river-flow-2 4.2s linear infinite; }
+@keyframes river-flow   { from { stroke-dashoffset: 0; }  to { stroke-dashoffset: -60; } }
+@keyframes river-flow-2 { from { stroke-dashoffset: 30; } to { stroke-dashoffset: -32; } }
+
+/* The road. The dash pattern, its starting offset, the duration and the
+   phase are all written per path by js/mapmotion.js; the distance here is
+   TRAFFIC.period there, and the two must agree. */
+.art-car {
+  stroke-width: 6;
+  stroke-linecap: butt;
+  animation-name: traffic-south;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.art-car-north { animation-name: traffic-north; }
+.art-car-0 { stroke: #b0402e; }
+.art-car-1 { stroke: #2e5a86; }
+.art-car-2 { stroke: #55595f; }
+@keyframes traffic-south { from { stroke-dashoffset: 0; } to { stroke-dashoffset: -600; } }
+@keyframes traffic-north { from { stroke-dashoffset: 0; } to { stroke-dashoffset: 600; } }
+
+/* Wind on open water: each ripple drifts downwind and fades in and out, at
+   one of three speeds, so a lake never pulses all at once. The wind blows
+   west to east, the same way as the clouds and the smoke. */
+.art-wave { animation: wave-drift 6s ease-in-out infinite; }
+.art-wave-1 { animation-duration: 7.5s; }
+.art-wave-2 { animation-duration: 9s; }
+@keyframes wave-drift {
+  0%   { transform: translate(-6px, 0); opacity: 0.2; }
+  30%  { opacity: 1; }
+  70%  { opacity: 1; }
+  100% { transform: translate(8px, 0); opacity: 0.2; }
+}
+
+/* Wind in the trees and reeds. Each plant leans a little east and back,
+   never far past upright the other way, because the wind only blows one
+   way. The lean is a skew pinned at the middle of the plant's foot: the
+   trunk stays where it was planted and only the top moves, which a turn
+   about the same point would not quite do. Reeds are lighter than trees,
+   so they bend further and quicker. Where each foot is, and when each one
+   starts - so where the gust has got to - is set per plant by
+   js/mapmotion.js, in map units, which is what view-box measures in. */
+.art-sway {
+  transform-box: view-box;
+  animation: sway-tree 5s ease-in-out infinite;
+}
+.art-sway-reed { animation-name: sway-reed; animation-duration: 3.4s; }
+/* A negative skew leans the top east. Five degrees moves a tree's crown
+   about two screen pixels on a laptop - enough to see, not enough to watch. */
+@keyframes sway-tree {
+  0%, 100% { transform: skewX(0.5deg); }
+  40%      { transform: skewX(-4.5deg); }
+}
+@keyframes sway-reed {
+  0%, 100% { transform: skewX(1deg); }
+  40%      { transform: skewX(-8deg); }
+}
+
+/* Chimney smoke: soft-edged puffs that swell, drift downwind and thin out,
+   close enough together to read as one plume. The soft edge is a gradient
+   (its fill is set in js/mapmotion.js, because a url() written here would
+   be looked for relative to css/). Invisible until it moves, so a puff that
+   is not animating is simply not there. */
+.art-puff {
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: puff-rise 5.6s ease-out infinite;
+}
+.art-puff-core { stop-color: #fbfaf6; stop-opacity: 0.95; }
+.art-puff-mid  { stop-color: #f1f0ea; stop-opacity: 0.7; }
+.art-puff-edge { stop-color: #e6e5df; stop-opacity: 0; }
+@keyframes puff-rise {
+  0%   { opacity: 0;   transform: translate(0, 0) scale(0.45); }
+  12%  { opacity: 0.9; }
+  100% { opacity: 0;   transform: translate(12px, -34px) scale(1.9); }
+}
+
+/* Cloud shadows. Every cloud is the same width, which is what lets one set
+   of keyframes carry any of them from just off the west edge of the map to
+   just off the east: 330% of 44% is 145%, a whole map and a cloud more.
+
+   Each shape is a few overlapping ellipses drawn at nearly full strength,
+   so where they overlap they merge into one flat shadow instead of piling
+   up darker, and the whole cloud is then faded with opacity. That one
+   number is how dark a shadow is; it is kept low enough that the ground
+   under a cloud still reads as itself. */
+.art-sky {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  --art-cloud: 24 38 56;
+}
+.art-cloud {
+  position: absolute;
+  left: -44%;
+  width: 44%;
+  height: 46%;
+  opacity: 0.13;
+  will-change: transform;
+  animation: cloud-drift 110s linear infinite;
+  --lobe: rgb(var(--art-cloud)), rgb(var(--art-cloud) / 0.85) 40%, rgb(var(--art-cloud) / 0.3) 75%, rgb(var(--art-cloud) / 0);
+}
+@keyframes cloud-drift {
+  from { transform: translateX(0); }
+  to   { transform: translateX(330%); }
+}
+.art-cloud-0 {
+  background:
+    radial-gradient(30% 36% at 28% 58%, var(--lobe)),
+    radial-gradient(36% 42% at 56% 44%, var(--lobe)),
+    radial-gradient(26% 32% at 80% 60%, var(--lobe));
+}
+.art-cloud-1 {
+  height: 36%;
+  background:
+    radial-gradient(40% 44% at 38% 50%, var(--lobe)),
+    radial-gradient(30% 36% at 72% 58%, var(--lobe));
+}
+.art-cloud-2 {
+  height: 54%;
+  background:
+    radial-gradient(24% 28% at 22% 62%, var(--lobe)),
+    radial-gradient(32% 38% at 46% 40%, var(--lobe)),
+    radial-gradient(30% 34% at 72% 62%, var(--lobe));
+}
+
+/* The general rule in css/style.css already stops every animation. That
+   leaves the water and the traffic still, which is right. The smoke hides
+   itself when it stops; the clouds would stop as dark blotches on the
+   ground, so they go. */
+@media (prefers-reduced-motion: reduce) {
+  .art-sky { display: none; }
+}

@@ -4,8 +4,9 @@ A browser game about routing a new electricity transmission connection across
 a map, and living with what it costs in money, environment and community
 support.
 
-The player draws a line from the **generation site** on the left edge to the
-**demand centre** on the right, choosing a technology for each span. Three
+The player draws a line from the **power station** on the left edge to the
+**grid supply point** on the right, choosing lattice pylons, T-pylons or
+underground cable for each span. Three
 dials react to every span built. When the line is energised, the weakest dial
 decides the verdict.
 
@@ -24,6 +25,32 @@ start index.html         # Windows
 Straight off the disk over `file://` is a supported way to run this. The
 scripts are plain classic scripts rather than ES modules for exactly that
 reason — module scripts are blocked by CORS on `file://`.
+
+**On Windows, double-click `Play Connecting the Grid.exe`**, which opens the
+game in the default browser. Players' instructions are in
+[How to play.txt](How%20to%20play.txt); what the program does, how to share it
+past the Windows warning and how to rebuild it are in
+[launcher/README.md](launcher/README.md).
+
+### On a big screen at a show
+
+Above 1280×720 the whole game grows with the screen, so a 1080p television
+shows the laptop layout half as big again and a 4K one three times as big.
+There is nothing to switch on for that. For a stand, turn on kiosk mode:
+
+1. With the game open, click the browser's address bar, replace everything
+   after `index.html` with `?kiosk`, and press Enter. The address keeps
+   `?kiosk` through new landscapes and reloads; if it is gone, so is kiosk
+   mode.
+2. Press **Full screen** at the right of the top bar (or F11) to hide the
+   browser's tabs and address bar.
+
+In kiosk mode a mouse pointer left still hides after 3 seconds. When a visitor
+walks away leaving a route started, a dialog or the tour open, or a switch
+changed, a fresh landscape goes up after 2 minutes with nobody touching
+anything. The last 15 seconds are counted down on screen, and any touch, key
+or mouse movement cancels it. An untouched landscape is left alone. The
+timings are in `CONFIG.kiosk`.
 
 ## Running the tests
 
@@ -69,13 +96,12 @@ is what the game asks for, and the piece is worked out from it. The six pieces
 are still exactly what gets recorded and scored; they are just no longer what
 gets asked about.
 
-**Scoring.** For each laid segment with land type `t` and technology `k`:
-
-```
-cost_i = cost(t) * costMult(k)
-env_i  = env(t)  * impactMult(k)
-comm_i = comm(t) * impactMult(k)
-```
+**Scoring.** For each laid segment with land type `t` and technology `k`,
+cost, environment and community are read from a table in
+[js/config.js](js/config.js): the ground's own `cost`, `envImpact` and
+`commImpact` are the figures on lattice pylons, and its `techs` block gives
+T-pylons and cable on that ground. A span on a square that shares an edge with
+houses adds `besideHomes.comm` for its technology on top.
 
 The totals sum across the route and map onto three 0–100 dials:
 
@@ -87,27 +113,47 @@ commDial = clamp(100 + (totalComm / COMM_FLOOR)  * 100, 0, 100)
 
 `totalEnv` is always zero or negative. `totalComm` can go positive, because
 connection customers and community benefit land add to it — the clamp handles
-that. Note that `impactMult` scales positive community effects down too, not
-just harm: undergrounding through a community benefit site earns less credit.
+that.
+
+**Technologies.** There used to be one multiplier per technology, applied to
+every ground alike, and it gave answers no planner would: burying a line
+through a wood spared the trees, and a customer was worth less connected by
+cable. The table is written out per ground instead, so that the sensible
+choice in each place is also the one that scores:
+
+| Where | Technology | Why |
+|---|---|---|
+| Farmland, roads, rocky ground, woodland, river, substations, customers | lattice | Nothing to spare, or every technology does the same harm: trees are felled either way, and a trench through rock or up a slope does more |
+| Hills | T-pylons, if community support is tight | Lattice pylons are seen for miles on high ground |
+| Designated land | go round; T-pylons if you must cross | Their single foundation takes the least habitat; a cable trench digs it up |
+| Houses | cable, the only choice | Pylons may not stand over homes |
+| Any square beside houses | T-pylons | Lattice there costs 3 community, a T-pylon 1, cable nothing |
+
+The last row is `besideHomes` in the config. It is the one figure that depends
+on where a square is rather than what it is, so each span records `beside`
+when it is laid, the way it records its ground.
 
 **Rules.** The route may not revisit a cell, may not cross open water, and must
 pass through a substation to be energised. Underground cable cannot be taken
-through a river.
+through a river, and neither kind of pylon can be put over houses. That second
+ban is a rule rather than a heavy penalty on purpose: the verdict follows the
+weakest dial, so a route with community support to spare took pylons over a
+village whenever that was cheaper.
 
 **Connection funding.** One kind of ground gives cost back rather than taking
-it: a funded connection point, worth -4. It is the only ground marked
-`fixedCost`, which means the technology multiplier does not apply to it — a
-grant is a sum agreed in advance and does not grow because the scheme chose to
-bury the line. The generator puts funding on the far side of the map from the
+it: a funded connection point, worth -4 on every technology — a grant is a sum
+agreed in advance and does not grow because the scheme chose to bury the line.
+The generator puts funding on the far side of the map from the
 way round the designated land, so reaching it is always a detour and always a
 question.
 
 **Committed mode.** Off by default. Turned on, spans cannot be taken down once
-they are up, the way they cannot on site — dragging back over the line stops
-rubbing it out, and the only way to change a route is to start again.
+they are up, the way they cannot on site — Undo goes, dragging back over the
+line stops rubbing it out, clicking the line stops taking it back, and the only
+way to change a route is to start again.
 
 **Blind mode.** Off by default. Turned on, every reading of the score — the
-meters, the preview in the tooltip, the forecast — is hidden until the
+meters and their preview markers, the forecast — is hidden until the
 connection is energised, and then all of it comes back with the verdict. The
 land and what each kind of ground costs stay visible: those are facts about
 the map, and the route has to be read off them.
@@ -133,7 +179,7 @@ still needed. Opened, it lists the ground crossed, the technology used, and
 which dial would decide the verdict if the route finished now. Facts only —
 what the route could still become is the forecast's job.
 
-**Verdicts.** When the line reaches the demand centre, the lowest dial picks
+**Verdicts.** When the line reaches the grid supply point, the lowest dial picks
 the verdict. If every dial finishes at or above `balancedThreshold` (70), the
 player gets the balanced verdict instead. Two dials tied at the bottom are
 broken apart in one place only, `Score.lowestDial` — cost, then environment,
@@ -155,20 +201,28 @@ so a corridor that does not add up is never shown at all.
   that way. Clicking the square itself carries straight on, which makes a long
   run one click per square. Holding the button down and dragging draws a run in
   one gesture, and dragging back over the line rubs it out.
+- **Going back:** clicking any square already on the line takes the line back
+  to that square — it and everything after it come down, and the square is in
+  play again, so the wrong turn can be made the other way. The square itself
+  comes down rather than staying as the new end because its span already fixes
+  which way the line leaves it. Clicking the end of the line is the same as
+  **Undo**. From the keyboard, move onto a square of the line and press Enter.
 - **Keyboard:** arrow keys walk a cursor around the map. An arrow pressed while
   the cursor is on the highlighted square sends the line that way instead, so
   arrow-arrow-arrow draws a route at the speed a mouse does. It cannot trap
   you: the way the line came in is never a legal way out, so there is always at
   least one direction that still just moves the cursor. `1`, `2` and `3` pick a
   technology.
-- **Either way:** hovering or focusing any square names the land and says what
-  crossing it costs. On the highlighted square it also says where the three
-  dials land if you build it — the same reading the ghost markers show inside
-  the meter bars. That preview does not change with direction, because the
-  span being paid for is the highlighted square's whichever way the line
-  leaves; it changes with **technology**, which is the choice it exists to
-  inform. Which way to go is answered on the arrows, which name the ground
-  each one leads into.
+- **Either way:** hovering or focusing any square opens its land card: the
+  land's icon and name, one short line on what it means for a route, and
+  what a span there costs on each technology — the chosen one highlighted,
+  the one that suits the square starred. Where the three dials would land
+  is shown by the ghost markers inside the meter bars, on the highlighted
+  square. That preview does not change with direction, because the span
+  being paid for is the highlighted square's whichever way the line leaves;
+  it changes with **technology**, which is the choice it exists to inform.
+  Which way to go is answered on the arrows, which name the ground each one
+  leads into.
 - **Asking why:** **Explain** under the forecast, or the `E` key, says what
   the last span cost, which way it sent the line and onto what ground, how
   the dials moved, and what it did to the best finish still open. **Why?**
@@ -179,10 +233,12 @@ so a corridor that does not add up is never shown at all.
   back into the line is drawn dashed: still allowed, and a dead end.
 - **Technology, per square:** each technology button shows what one span on
   the highlighted square costs on it, as cost / environment / community, and
-  the tooltip on every square lists the same for all three, with a line on
-  what that ground means for a route.
+  the land card on every square lists the same for all three. The words for
+  the card are `brief`, `pick` and `pickBeside` on each ground in
+  [js/config.js](js/config.js); the ground's longer description shows when
+  the pointer rests on its row of the legend.
 - **The tour:** five short steps pointing at the square in play, the
-  technology buttons, the meters, the forecast and the demand centre. It opens
+  technology buttons, the meters, the forecast and the grid supply point. It opens
   by itself when the game is opened without a landscape in the address, and
   from **Tour** at any time.
 - Every cell, meter and move is described for screen readers, and the status
@@ -226,8 +282,8 @@ will.
 ## Tuning the game
 
 [js/config.js](js/config.js) is the only file you need to edit to rebalance
-anything. It holds the generator settings, every cost and impact number, the
-technology multipliers, the scoring budgets, the verdicts and every word of
+anything. It holds the generator settings, every cost and impact number, what
+each technology does on each ground, the scoring budgets, the verdicts and every word of
 on-screen text. No other file contains a magic number or a hard-coded string.
 
 Maps are not written down any more. They are generated from a short seed — the
@@ -247,11 +303,11 @@ H hills       T houses/industry    G connection funding
 The eleven columns are shared out to a plan, and that plan is the game:
 
 ```
- 0        the generation site
+ 0        the power station
  1 - 2    the road, running the full height of the map
  3 - 6    the designated land, a wavy band two to three cells thick
  7 - 9    the river, running the full height of the map
- 9 - 10   the town, and the demand centre
+ 9 - 10   the town, and the grid supply point
 ```
 
 Four properties are guaranteed rather than hoped for, and they are what make
@@ -282,13 +338,13 @@ away and another rolled unless all three of these hold:
 
 | Check | What it means |
 |---|---|
-| **solvable** | some route reaches the demand centre through a substation |
+| **solvable** | some route reaches the grid supply point through a substation |
 | **balanced** | some route scores at or above 70 on *all three* dials |
 | **non-trivial** | the *cheapest* route does not, and fails on environment |
 
-Across 500 seeds the generator accepts about two maps in three (66.2% at the
+Across 500 seeds the generator accepts about three maps in five (59.6% at the
 settings in `config.js`), and the best weakest dial on an accepted map runs
-from 70 to 77.7, median 72.5. That sweep mixes every kind of landscape below
+from 70 to 77.7, median 72.3. That sweep mixes every kind of landscape below
 and judges them all by these three checks alone; the plain kind on its own is
 accepted 78% of the time. The difficulty badge is banded against these
 figures, so re-measure with `node js/balance.js --seeds 500` before moving
@@ -326,11 +382,18 @@ the three checks above, never instead of them:
 | Kind | Drawn with | Must also show | Accepted |
 |---|---|---|---|
 | Open country | the plain generator | — | 78% |
-| Narrow gap | a gap one row wide, rougher ground, bigger lake | best weakest dial under 73 | 42% |
-| Community pressure | the town standing across the way round | best route cannot keep community at 90 | 31% |
-| Hard crossing | woodland on both river banks | — | 53% |
-| Knife edge | the town across the way round, wooded banks | no dial on the best route above 85 | 33% |
-| The long way round | the plain generator | best route costs at most 1.08x the cheapest | 16% |
+| Narrow gap | a gap one row wide, rougher ground, bigger lake | best weakest dial under 73 | 41% |
+| Community pressure | a five-square town across the way round, no benefit land, one customer | best route cannot keep community at 90 | 48% |
+| Hard crossing | woodland on both river banks | — | 52% |
+| Knife edge | the same town and rewards, and wooded banks | no dial on the best route above 85 | 17% |
+| The long way round | the plain generator | best route costs at most 1.08x the cheapest | 15% |
+
+The two town kinds were redrawn when pylons were banned over houses. Their
+eight-square town had been passed on pylons, which is what kept community
+under pressure; banned from that, the best route went round or under, and
+both kinds fell to about 1% accepted. A smaller town keeps a route under it
+affordable, and taking away the benefit land stops the way round buying back
+the objection that passing beside the town costs.
 
 A rarely accepted kind gets more rerolls (`maxTries`). Rerolls keep to the
 kind the first roll picked, so the weights mean what they say rather than
@@ -401,8 +464,8 @@ Every symbol — in [js/mapsymbols.js](js/mapsymbols.js) — is lit from the upp
 left, with a shadow on the ground to the lower right, matching the relief under
 raised ground. Canopies and roofs are filled with `currentColor` and each copy
 gets a tint class, so one tree symbol makes a wood of three greens. The two
-ends of the line get pictures of their own: wind turbines at the generation
-site, a small skyline at the demand centre. Both keep clear of the middle band
+ends of the line get pictures of their own: wind turbines at the power
+station, a small skyline at the grid supply point. Both keep clear of the middle band
 of their cell, where the line always runs.
 
 The route on top is one path per run of cells sharing a technology, rather than
@@ -420,12 +483,48 @@ repaint. And all of the above is drawn **once per map** — laying a span
 repaints the route layer and nothing else.
 
 **There are two SVG sheets, one over the other.** The lower one holds the
-landscape and all the filters, and CSS gives it a compositing layer of its own
+ground itself — paper, fields, regions and all the filters, then the river bed
+and the road — and CSS gives it a compositing layer of its own
 (`will-change: transform`), which means the browser paints it once and keeps
-the picture. The upper one holds what moves: the route, the best route found,
-and the turning turbines. Without the split, every span laid and every frame
-of animation would make the browser run the roughening filter again over the
+the picture. The upper one holds everything standing on that ground (trees,
+reeds, hills, rocks, houses, landmarks, the field lines) and everything that
+moves: the landscape's own motion, the turning turbines, the route and the
+best route found. Without the split, every span laid and every frame of
+animation would make the browser run the roughening filter again over the
 patch that changed.
+
+**The landscape moves a little by itself.** The river's glints flow
+downstream, cars drive the road on the left-hand side, ripples drift across
+the lakes, trees and reeds lean in the wind, smoke rises from some of the
+chimneys, and cloud shadows pass slowly over the whole map. It is drawn by
+[js/mapmotion.js](js/mapmotion.js) into two groups `mapart.js` leaves empty on
+the upper sheet — one under the trees for the water and traffic, one over them
+for the smoke, both under the route — and animated by
+[css/mapmotion.css](css/mapmotion.css). Four choices keep it cheap and quiet:
+
+- **Nothing moves on the lower sheet.** The glints and ripples used to be drawn
+  there, and so did every tree, reed, house and landmark; all of it moved up,
+  so the filters are still painted once.
+- **The wind travels.** Each gust reaches the west edge first and takes a few
+  seconds to cross the map, so it is seen moving through a wood rather than
+  every tree leaning at once. The lean is a skew pinned at the plant's foot,
+  written out per plant in map units: Chromium measures a `<use>` without its
+  `x` and `y`, so `transform-box: fill-box` pinned every plant near the corner
+  of the map instead.
+- **The cloud shadows are HTML boxes, not SVG.** A box that only slides is moved
+  by the graphics card without repainting anything, which an SVG shape cannot
+  be.
+- **Each car is one dash of a dashed line.** Traffic moves by sliding the dash
+  pattern along the lane, so the road costs a few paths however many cars are
+  on it.
+
+It is slow and faint on purpose: the map is where the player thinks, and the
+pulsing target square has to stay the loudest thing on it. Under
+`prefers-reduced-motion` the water, traffic and plants stand still, and the
+smoke and clouds are not shown at all. How much of it there is — the share of
+chimneys lit, cars per lane, number of clouds, how fast a gust crosses — is set
+at the top of `mapmotion.js`; how far a tree or reed leans is in the `sway`
+keyframes in `mapmotion.css`.
 
 **The picture is decoration, and that is load bearing.** The SVG is emitted
 `aria-hidden` and sits *beneath* the grid of real `<button>` elements. Every bit
@@ -458,7 +557,10 @@ pretending otherwise makes both unusable.
 ```
 index.html        markup and script order
 css/style.css     all styling, including the colours of the landscape
-css/guidance.css  the forecast, Why?, span tints, tooltip extras and the tour
+css/guidance.css  the forecast, Why?, span tints, land card numbers and the tour
+css/howto.css     the How to play sheet and its pictures
+css/mapmotion.css the landscape's motion: water, traffic, plants, smoke, clouds
+css/bigscreen.css the game growing with the screen, and kiosk mode's styles
 img/*.svg         icons for the legend
 js/config.js      all tunable numbers, the generator settings, all text
 js/rng.js         seeded randomness. No Math.random anywhere in this project
@@ -469,11 +571,16 @@ js/foresight.js   the best finish still open from the end of the line. No DOM
 js/advice.js      numbers into sentences: explain, why, look ahead. No DOM
 js/mapsymbols.js  the drawings: trees, houses, landmarks, the two ends
 js/mapart.js      lays the landscape out as a decorative SVG
+js/mapmotion.js   what moves in it: river, traffic, ripples, plants, smoke, clouds
 js/routeart.js    draws the route and the best route found over it
 js/render.js      everything else that writes to the page. No state, no rules
-js/guidance.js    dresses render's meters, buttons, board and tooltip with advice
+js/guidance.js    dresses render's meters, buttons, board and land card with advice
 js/tour.js        the five-step tour
+js/howto.js       the How to play sheet: cards of pictures, played while it is open
+js/howtoart.js    the pictures on it, scored with the game's own numbers
+js/howtoboard.js  a few squares of map for those pictures, drawn with the map's own code
 js/game.js        state and rules. Never touches the DOM directly
+js/bigscreen.js   the full-screen button, and ?kiosk: idle reset, hidden pointer
 ```
 
 The separation is strict and worth keeping: if you find yourself deciding

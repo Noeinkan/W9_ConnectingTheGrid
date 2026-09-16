@@ -200,16 +200,17 @@ var Guidance = (function (CFG, Score, Advice, Render) {
     note.style.top = Math.round(Math.max(margin, Math.min(top, window.innerHeight - height - margin))) + 'px';
   }
 
-  /* What technology does to the numbers, under the legend's own table -
-     worked out from CONFIG.technologies, so a rebalance cannot leave the
-     sentence behind. */
+  /* Where each technology belongs, under the legend's own table - read from
+     CONFIG.technologies, so a rebalance cannot leave the sentence behind.
+     Its numbers are not here: they depend on the ground, and the tooltip
+     shows them for the square. */
   function buildLegendNote() {
     if (!els.legend || !els.legend.parentNode) { return; }
     var note = document.createElement('p');
     note.className = 'legend-note legend-tech';
 
     var lines = CFG.technologies.map(function (tech) {
-      var line = fill(CFG.copy.legendTech, { tech: tech.short, cost: tech.costMult, impact: tech.impactMult });
+      var line = fill(CFG.copy.legendTech, { tech: tech.short, summary: tech.summary });
       if (tech.bansTerrain.length) {
         line += ', ' + fill(CFG.copy.legendTechBans, {
           terrain: tech.bansTerrain.map(function (id) { return CFG.cellTypes[id].label.toLowerCase(); }).join(', ')
@@ -217,7 +218,7 @@ var Guidance = (function (CFG, Score, Advice, Render) {
       }
       return line;
     });
-    note.textContent = lines.join('. ') + '. ' + CFG.copy.legendTechFixed;
+    note.textContent = lines.join('. ') + '. ' + CFG.copy.legendTechWhere;
     els.legend.parentNode.insertBefore(note, els.legend.nextSibling);
   }
 
@@ -280,6 +281,8 @@ var Guidance = (function (CFG, Score, Advice, Render) {
     var typeId = state.target ? Score.typeIdAt(state.target.col, state.target.row) : null;
     var type = typeId ? CFG.cellTypes[typeId] : null;
     var live = !!type && type.passable;
+    var beside = live && Score.besideHomes(state.target.col, state.target.row);
+    var place = live && beside ? fill(CFG.copy.besideHomesLabel, { terrain: type.label }) : type && type.label;
 
     Array.prototype.forEach.call(els.tech.querySelectorAll('.tech[data-tech]'), function (button) {
       var techId = button.dataset.tech;
@@ -303,22 +306,22 @@ var Guidance = (function (CFG, Score, Advice, Render) {
         return;
       }
 
-      var span = Advice.spanOn(typeId, techId);
+      var span = Advice.spanOn(typeId, techId, beside);
       button.classList.toggle('is-banned-here', span.banned);
       effect.textContent = span.banned
         ? CFG.copy.techBanned
         : fill(CFG.copy.techEffect, span);
       button.setAttribute('aria-label', (span.banned
-        ? fill(CFG.copy.techBannedSpoken, { tech: tech.label, terrain: type.label.toLowerCase() })
+        ? fill(CFG.copy.techBannedSpoken, { tech: tech.label, terrain: place.toLowerCase() })
         : fill(CFG.copy.techEffectSpoken, {
-            tech: tech.label, terrain: type.label.toLowerCase(),
+            tech: tech.label, terrain: place.toLowerCase(),
             cost: span.cost, env: span.env, comm: span.comm
           })) + ' ' + tech.description);
     });
 
     if (els.techHint) {
       els.techHint.textContent = live
-        ? fill(CFG.copy.techHintOn, { terrain: type.label.toLowerCase() })
+        ? fill(CFG.copy.techHintOn, { terrain: place.toLowerCase() })
         : CFG.copy.techHint;
     }
   }
@@ -374,40 +377,32 @@ var Guidance = (function (CFG, Score, Advice, Render) {
   }
 
   /* ---------------------------------------------------------------------
-     The tooltip, and looking down an arrow
+     The land card, and looking down an arrow
      ------------------------------------------------------------------- */
+
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) { node.className = className; }
+    if (text != null) { node.textContent = text; }
+    return node;
+  }
 
   function decorateTip(tip, col, row) {
     var typeId = Score.typeIdAt(col, row);
     var type = typeId && CFG.cellTypes[typeId];
     if (!type) { return; }
 
-    if (type.tip) {
-      var note = document.createElement('span');
-      note.className = 'tip-note';
-      note.textContent = type.tip;
-      tip.appendChild(note);
-    }
+    /* The note only where it changes something: on houses themselves no
+       pylon may stand, so there is nothing in view to object to. */
+    var beside = type.passable && Score.besideHomes(col, row);
+    var seen = beside && CFG.technologies.some(function (tech) {
+      return (CFG.besideHomes.comm[tech.id] || 0) !== 0 && Score.canUseTech(tech.id, typeId);
+    });
+    if (seen) { tip.appendChild(el('span', 'tip-beside', CFG.copy.besideHomesNote)); }
 
     if (type.passable) {
-      var table = document.createElement('span');
-      table.className = 'tip-techs';
-      CFG.technologies.forEach(function (tech) {
-        var span = Advice.spanOn(typeId, tech.id);
-        var name = document.createElement('span');
-        name.className = 'tip-tech-name';
-        name.textContent = tech.short;
-        var nums = document.createElement('span');
-        nums.className = 'tip-tech-nums';
-        nums.textContent = span.banned ? CFG.copy.tipTechBanned : fill(CFG.copy.techEffect, span);
-        if (painted && painted.currentTech === tech.id) {
-          name.classList.add('is-chosen');
-          nums.classList.add('is-chosen');
-        }
-        table.appendChild(name);
-        table.appendChild(nums);
-      });
-      tip.appendChild(table);
+      var pick = beside && type.pickBeside ? type.pickBeside : type.pick;
+      tip.appendChild(techRows(typeId, beside, pick));
     }
 
     // On a span already built: what it cost of the best finish.
@@ -415,20 +410,71 @@ var Guidance = (function (CFG, Score, Advice, Render) {
       painted.route.forEach(function (segment, index) {
         if (segment.col !== col || segment.row !== row) { return; }
         var said = Advice.routeMoodNote(painted.moods && painted.moods[index]);
-        if (!said) { return; }
-        var mood = document.createElement('span');
-        mood.className = 'tip-mood';
-        mood.textContent = said;
-        tip.appendChild(mood);
+        if (said) { tip.appendChild(el('span', 'tip-mood', said)); }
       });
     }
 
-    /* The box is taller than render.js sized its placement for, so it drops
-       below the square for the top few rows instead of only the first two. */
-    if (row <= 3) {
+    /* The card is taller than render.js placed it for, so it drops below
+       the square on the top three rows instead of only the first two. */
+    if (row <= 2) {
       tip.setAttribute('data-below', '');
       tip.style.setProperty('--cy', row + 1);
     }
+  }
+
+  /* The square's numbers: one row per technology, a column per dial under
+     its icon. The chosen technology is the highlighted row and the one that
+     belongs on this square is starred, so the answer can be seen without
+     reading a number. */
+  function techRows(typeId, beside, pick) {
+    var table = el('span', 'tip-techs');
+
+    var head = el('span', 'tip-row tip-row-head');
+    head.appendChild(el('span'));
+    CFG.dials.forEach(function (dial) {
+      var cell = el('span', 'tip-dial');
+      cell.appendChild(Render.dialIcon(dial.id));
+      head.appendChild(cell);
+    });
+    table.appendChild(head);
+
+    CFG.technologies.forEach(function (tech) {
+      var span = Advice.spanOn(typeId, tech.id, beside);
+      var line = el('span', 'tip-row tech-' + tech.id);
+      line.classList.toggle('is-chosen', !!painted && painted.currentTech === tech.id);
+      line.classList.toggle('is-banned', !!span.banned);
+
+      var name = el('span', 'tip-tech');
+      name.appendChild(el('span', 'tech-swatch'));
+      name.appendChild(document.createTextNode(tech.short));
+      if (pick === tech.id) { name.appendChild(el('span', 'tip-pick', '★')); }
+      line.appendChild(name);
+
+      if (span.banned) {
+        line.appendChild(el('span', 'tip-banned', CFG.copy.tipTechBanned));
+      } else {
+        CFG.dials.forEach(function (dial) { line.appendChild(figure(dial, span[dial.id])); });
+      }
+      table.appendChild(line);
+    });
+    return table;
+  }
+
+  /* One number on the card. Harm is red and help green, but the sign is
+     always written as well, so colour is never the only way to tell. Money
+     spent is not marked as harm - every span costs some - so on a dial with
+     a budget only money given back is coloured, as help. */
+  function figure(dial, text) {
+    var value = Number(text);
+    var spends = !!dial.budget;
+    var cell = el('span', 'tip-val');
+    cell.textContent = value < 0
+      ? '−' + Math.abs(value)
+      : (value > 0 && !spends ? '+' : '') + value;
+    if (value === 0) { cell.classList.add('is-zero'); }
+    else if (spends ? value < 0 : value > 0) { cell.classList.add('is-good'); }
+    else if (!spends) { cell.classList.add('is-bad'); }
+    return cell;
   }
 
   // Shift + arrow: mark the arrow being looked down, and show what is there.

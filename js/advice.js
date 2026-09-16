@@ -73,12 +73,20 @@ var Advice = (function (CFG, Score) {
      One span, on one kind of ground, on one technology
      ------------------------------------------------------------------- */
 
-  function spanOn(typeId, techId) {
+  /* `beside` is whether the square shares an edge with houses - for one
+     square of the map in play, Score.besideHomes(col, row). */
+  function spanOn(typeId, techId, beside) {
     var type = CFG.cellTypes[typeId];
     if (!type || !type.passable) { return { banned: true, impassable: true }; }
     if (!Score.canUseTech(techId, typeId)) { return { banned: true }; }
-    var span = Score.scoreSegment(typeId, techId);
+    var span = Score.scoreSegment(typeId, techId, beside);
     return { banned: false, cost: num(span.cost), env: num(span.env), comm: num(span.comm) };
+  }
+
+  // The ground's name, and whether the square is beside houses.
+  function placeName(typeId, beside) {
+    var label = CFG.cellTypes[typeId].label;
+    return beside ? fill(CFG.copy.besideHomesLabel, { terrain: label }) : label;
   }
 
   /* ---------------------------------------------------------------------
@@ -216,11 +224,11 @@ var Advice = (function (CFG, Score) {
     var last = route[n - 1];
     var type = CFG.cellTypes[last.typeId];
     var tech = Score.technology(last.techId);
-    var span = spanOn(last.typeId, last.techId);
+    var span = spanOn(last.typeId, last.techId, last.beside);
 
     var parts = [fill(copy.explainSpan, {
       n: n,
-      terrain: type.label,
+      terrain: placeName(last.typeId, last.beside),
       tech: tech.label,
       cost: span.cost,
       env: span.env,
@@ -269,6 +277,7 @@ var Advice = (function (CFG, Score) {
     }
 
     if (type.tip) { parts.push(type.tip); }
+    if (last.beside) { parts.push(copy.besideHomesNote); }
     return parts.join(' ');
   }
 
@@ -294,7 +303,7 @@ var Advice = (function (CFG, Score) {
       }),
       items: groups.slice(0, WHY_ITEMS).map(function (g) {
         return fill(copy.meterWhyItem, {
-          terrain: CFG.cellTypes[g.typeId].label,
+          terrain: placeName(g.typeId, g.beside),
           count: g.count,
           tech: Score.technology(g.techId).short,
           points: signed(g.points[dialId])
@@ -352,9 +361,10 @@ var Advice = (function (CFG, Score) {
     if (trap === 'used') { return fill(copy.previewUsed, { side: side }); }
 
     var typeId = Score.typeIdAt(exit.to.col, exit.to.row);
+    var beside = Score.besideHomes(exit.to.col, exit.to.row);
     var tech = Score.technology(state.currentTech);
-    var span = spanOn(typeId, state.currentTech);
-    var terrain = CFG.cellTypes[typeId].label;
+    var span = spanOn(typeId, state.currentTech, beside);
+    var terrain = placeName(typeId, beside);
     if (span.banned) {
       return fill(copy.previewBanned, { side: side, terrain: terrain, tech: tech.short });
     }
@@ -409,7 +419,7 @@ var Advice = (function (CFG, Score) {
       { col: 1, row: 4, typeId: 'woodland', techId: 'lattice' }
     ];
     var told = explainLast(woods, [open(74), open(74), open(71)]);
-    check('explain names the span', told.indexOf('Span 2: Woodland on Lattice tower') === 0, true);
+    check('explain names the span', told.indexOf('Span 2: Woodland on Lattice pylons') === 0, true);
     check('explain names the dial that moved', told.indexOf('environment from 100 to 92.5') !== -1, true);
     check('explain says what the forecast did', told.indexOf('fell from 74 to 71') !== -1, true);
     check('explain in quiet mode gives no score away',

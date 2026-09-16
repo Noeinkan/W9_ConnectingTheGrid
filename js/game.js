@@ -104,12 +104,15 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
 
   function head() { return state.route[state.route.length - 1]; }
 
-  function isOnRoute(col, row) {
+  // Which span of the route stands on this square, or -1 if none does.
+  function routeIndexAt(col, row) {
     for (var i = 0; i < state.route.length; i++) {
-      if (state.route[i].col === col && state.route[i].row === row) { return true; }
+      if (state.route[i].col === col && state.route[i].row === row) { return i; }
     }
-    return false;
+    return -1;
   }
+
+  function isOnRoute(col, row) { return routeIndexAt(col, row) !== -1; }
 
   function fill(template, values) {
     return template.replace(/\{(\w+)\}/g, function (whole, name) {
@@ -278,7 +281,8 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
       row: row,
       pieceId: pieceId,
       techId: state.currentTech,
-      typeId: Score.typeIdAt(col, row)
+      typeId: Score.typeIdAt(col, row),
+      beside: Score.besideHomes(col, row)
     });
     cursor = { col: col, row: row };
     settlePhase();
@@ -327,7 +331,8 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
     var typeId = Score.typeIdAt(state.target.col, state.target.row);
     if (!typeId) { return null; }
 
-    var span = Score.scoreSegment(typeId, state.currentTech);
+    var span = Score.scoreSegment(typeId, state.currentTech,
+      Score.besideHomes(state.target.col, state.target.row));
     var now = state.score.totals;
 
     return {
@@ -351,9 +356,22 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
   function undo() {
     if (!CFG.rules.allowUndo) { return say(CFG.copy.errUndoDisabled, 'error'); }
     if (state.route.length === 0) { return say(CFG.copy.errNoRoute, 'error'); }
+    return takeBackTo(state.route.length - 1);
+  }
 
-    var removed = state.route.pop();
-    cursor = { col: removed.col, row: removed.row };
+  /* Take the line back so the square of span `index` is in play again:
+     that span and every one after it come down together. Undo is the same
+     thing for the last span alone.
+
+     The clicked square comes down too, rather than staying as the new end,
+     because a span already says which way the line left its square. Keep
+     the square where the wrong turn was made and the line would still leave
+     it the wrong way; bring it back into play and the turn can be made
+     again. The readings kept per route length mean nothing is searched. */
+  function takeBackTo(index) {
+    var from = state.route[index];
+    state.route.length = index;
+    cursor = { col: from.col, row: from.row };
     settlePhase();
     settleForecast();
     refresh();
@@ -578,8 +596,10 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
   function rememberInAddressBar() {
     try {
       if (!history.replaceState) { return; }
-      history.replaceState(null, '', state.daily ? '?daily'
-        : state.weekly ? '?weekly' : '?seed=' + encodeURIComponent(state.seed));
+      // A screen at a show stays one through every new landscape and reload. See js/bigscreen.js.
+      var kiosk = /[?&]kiosk(=|&|$)/.test(String(location.search || '')) ? 'kiosk&' : '';
+      history.replaceState(null, '', '?' + kiosk + (state.daily ? 'daily'
+        : state.weekly ? 'weekly' : 'seed=' + encodeURIComponent(state.seed)));
     } catch (ignored) {
       /* file:// in some browsers. The game plays on regardless; only the
          shareable link is lost, and the seed is still on screen. */
@@ -622,7 +642,8 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
         row: cell.row,
         pieceId: piece ? piece.id : null,
         techId: cell.techId,
-        typeId: cell.typeId
+        typeId: cell.typeId,
+        beside: cell.beside
       };
     });
 
@@ -736,6 +757,15 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
      ------------------------------------------------------------------- */
 
   function onCellActivate(col, row) {
+    /* Clicking a square the line already runs through takes the line back
+       to it. First, because a finished or stuck line has no target square
+       and can still be taken back. */
+    var span = routeIndexAt(col, row);
+    if (span !== -1) {
+      if (!CFG.rules.allowUndo) { return say(CFG.copy.errUndoDisabled, 'error'); }
+      return takeBackTo(span);
+    }
+
     if (!state.target) { return say(CFG.copy.errComplete, 'error'); }
 
     // Clicking the square ahead of the line sends the line to it.
@@ -753,7 +783,10 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
       return say(CFG.copy.errNoStraight, 'error');
     }
 
-    return say(CFG.copy.errWrongSquare, 'error');
+    // Where a player looking for a way back is most likely to land.
+    return say(CFG.rules.allowUndo && state.route.length
+      ? CFG.copy.errWrongSquareTakeBack
+      : CFG.copy.errWrongSquare, 'error');
   }
 
   function onCellFocus(col, row) {
@@ -889,7 +922,6 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
       seedForm: 'seedForm',
       seedInput: 'seedInput',
       seedGo: 'seedGo',
-      daily: 'dailyButton',
       instructionsTab: 'instructionsTab',
       instructionsDialog: 'instructionsDialog',
       instructionsHeading: 'instructionsHeading',
@@ -921,7 +953,8 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
     Render.buildTechPicker(Render.elements.tech, setTech);
     Render.buildMeters(Render.elements.meters);
     Render.buildLegend(Render.elements.legend);
-    Render.buildInstructions(Render.elements.instructionsBody);
+    // The How to play sheet. Its pictures play only while it is open.
+    HowTo.build(Render.elements.instructionsBody, Render.elements.instructionsDialog);
 
     // After the meters, the technology buttons and the legend: it dresses them.
     Guidance.build({ onExplain: explainLast, onExplainDial: explainDial });
@@ -930,7 +963,7 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
       onFinish: function () { Render.setCursor(cursor.col, cursor.row, true); }
     });
     // Before the first landscape is installed, which is its first paint.
-    SummaryPanel.build({ onBlind: setBlind, onWeekly: function () { newWeekly(); } });
+    SummaryPanel.build({ onBlind: setBlind });
 
     Render.elements.board.addEventListener('keydown', onBoardKeyDown);
     document.addEventListener('keydown', onShortcut);
@@ -946,10 +979,6 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
         CFG.rules.allowUndo = !event.target.checked;
         refresh();
       });
-    }
-
-    if (Render.elements.daily) {
-      Render.elements.daily.addEventListener('click', function () { newDaily(); });
     }
 
     /* Typing a landscape's name plays that landscape. The generator has
@@ -972,6 +1001,7 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
     }
     Render.elements.instructionsTab.addEventListener('click', function () {
       Render.openDialog(Render.elements.instructionsDialog);
+      HowTo.play();
     });
 
     /* The verdict used to be a dead end with nothing on it but Close. This

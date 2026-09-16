@@ -47,6 +47,9 @@ var MapSymbols = (function () {
 
   function n(value) { return Math.round(value * 100) / 100; }
 
+  // The middle of the top of the house's chimney, in the symbol's 0-100 units.
+  var CHIMNEY_TOP = [68, 26];
+
   /* ---------------------------------------------------------------------
      Ground cover
      ------------------------------------------------------------------- */
@@ -112,7 +115,8 @@ var MapSymbols = (function () {
     append(reed, 'circle', { cx: 61, cy: 88, r: 4, class: 'art-flower' });
 
     /* A house, seen from the front and a little above. The chimney goes in
-       before the roof so the roof hides its foot. */
+       before the roof so the roof hides its foot. Its top is CHIMNEY_TOP,
+       where js/mapmotion.js lets the smoke out: move one, move the other. */
     var house = symbol('house');
     groundShadow(house, 58, 93, 42, 6);
     append(house, 'path', { d: 'M20 92V52h60v40z', class: 'art-wall' });
@@ -280,7 +284,8 @@ var MapSymbols = (function () {
   return {
     define: define,
     drawGenerationSite: drawGenerationSite,
-    drawDemandCentre: drawDemandCentre
+    drawDemandCentre: drawDemandCentre,
+    chimneyTop: CHIMNEY_TOP
   };
 
 }());

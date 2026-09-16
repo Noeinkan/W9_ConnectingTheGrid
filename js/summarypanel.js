@@ -43,10 +43,10 @@ var SummaryPanel = (function (CFG, Summary, Archetypes) {
      Wiring, once
      ------------------------------------------------------------------- */
 
-  /* handlers: { onBlind(boolean), onWeekly() }, both game.js's. */
+  /* handlers: { onBlind(boolean) }, game.js's. */
   function build(handlers) {
     ['summaryHeading', 'summary', 'blindToggle', 'blindLabel', 'blindHint',
-     'blindNote', 'weeklyButton', 'archetype', 'blindSwitch', 'committedSwitch'].forEach(function (id) {
+     'blindNote', 'archetype', 'blindSwitch', 'committedSwitch'].forEach(function (id) {
       els[id] = document.getElementById(id);
     });
     els.app = document.querySelector('.app');
@@ -55,7 +55,6 @@ var SummaryPanel = (function (CFG, Summary, Archetypes) {
     setText(els.blindLabel, copy.blindLabel);
     setText(els.blindHint, copy.blindHint);
     setText(els.blindNote, copy.blindMeters);
-    setText(els.weeklyButton, copy.weeklyButton);
 
     /* The two switches share a row, so their explanations are no longer
        printed under them. A screen reader gets each through
@@ -74,9 +73,6 @@ var SummaryPanel = (function (CFG, Summary, Archetypes) {
       els.blindToggle.addEventListener('change', function (event) {
         handlers.onBlind(event.target.checked);
       });
-    }
-    if (els.weeklyButton) {
-      els.weeklyButton.addEventListener('click', function () { handlers.onWeekly(); });
     }
   }
 

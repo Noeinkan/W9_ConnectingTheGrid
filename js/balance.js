@@ -46,8 +46,8 @@ var Balance = (function (CFG, Score) {
      One number. Not three, and not an object.
 
      A state is a running total of cost, environment and community. All three
-     land on exact tenths - the technology multipliers are 1.0, 1.4, 0.7, 6.0
-     and 0.2, so every product with a whole-number terrain value is one - so
+     land on exact tenths - every figure in CONFIG's technology table is
+     written to one decimal place, which the scoring self test checks - so
      they are carried as whole numbers of tenths and no floating point dust
      ever appears.
 
@@ -256,11 +256,15 @@ var Balance = (function (CFG, Score) {
      rather than in the inner loop is the biggest single saving in the whole
      search: on plain farmland every other technology costs more and spares
      nothing, so two of the three branches disappear before the search
-     starts. On woodland all three survive, and should. */
+     starts. Beside houses a T-pylon survives there too, and should.
+
+     A square beside houses is its own entry, because it scores differently
+     from the same ground anywhere else. */
   var optionCache = Object.create(null);
 
-  function optionsFor(typeId) {
-    if (typeId in optionCache) { return optionCache[typeId]; }
+  function optionsFor(typeId, beside) {
+    var cacheKey = beside ? typeId + '|beside' : typeId;
+    if (cacheKey in optionCache) { return optionCache[cacheKey]; }
     var type = CFG.cellTypes[typeId];
     var options = null;
 
@@ -268,10 +272,11 @@ var Balance = (function (CFG, Score) {
       var raw = [];
       CFG.technologies.forEach(function (tech) {
         if (tech.bansTerrain.indexOf(typeId) !== -1) { return; }
+        var span = Score.scoreSegment(typeId, tech.id, beside);
         raw.push(pack(
-          Math.round(Score.costOf(type, tech) * 10),
-          Math.round(type.envImpact * tech.impactMult * 10),
-          Math.round(type.commImpact * tech.impactMult * 10)
+          Math.round(span.cost * 10),
+          Math.round(span.env * 10),
+          Math.round(span.comm * 10)
         ));
       });
       /* Pruned as if they were whole states, which they are - a one-cell
@@ -287,7 +292,7 @@ var Balance = (function (CFG, Score) {
       }) : null;
     }
 
-    optionCache[typeId] = options;
+    optionCache[cacheKey] = options;
     return options;
   }
 
@@ -343,9 +348,9 @@ var Balance = (function (CFG, Score) {
      come back as the cheapest route that happened to be clean, which is a
      different thing and would let a trivial map through.
 
-     Cost only, no Pareto set, no technology branching - laying a span on
-     anything other than a lattice tower only ever costs more - so this is a
-     handful of additions per cell.
+     Cost only, no Pareto set, no technology branching - each cell simply
+     takes its cheapest allowed technology, lattice almost everywhere and
+     cable under houses - so this is a handful of additions per cell.
      ------------------------------------------------------------------- */
 
   var floorCache = Object.create(null);
@@ -367,7 +372,7 @@ var Balance = (function (CFG, Score) {
     if (type.passable) {
       CFG.technologies.forEach(function (tech) {
         if (tech.bansTerrain.indexOf(typeId) !== -1) { return; }
-        var cost = Math.round(Score.costOf(type, tech) * 10);
+        var cost = Math.round(Score.scoreSegment(typeId, tech.id).cost * 10);
         if (lowest === null || cost < lowest) { lowest = cost; }
       });
     }
@@ -440,9 +445,12 @@ var Balance = (function (CFG, Score) {
      dial is pinned at zero, so it can be neither the balanced route nor the
      cheapest one, and carrying it on would double the search for nothing.
      Whether a route EXISTS is answered separately, above, so this cannot
-     make an expensive map look like an impossible one. */
-  function advance(bundle, typeId, limits, note) {
-    var options = optionsFor(typeId);
+     make an expensive map look like an impossible one.
+
+     `beside` is whether this cell shares an edge with houses; the caller
+     reads it off Score.besideHomesGrid once per landscape. */
+  function advance(bundle, typeId, beside, limits, note) {
+    var options = optionsFor(typeId, beside);
     if (!options) { return null; }          // open water: the run stops here
 
     var branches = [];
@@ -505,6 +513,7 @@ var Balance = (function (CFG, Score) {
   function explore(rows, floor, tracer) {
     var reportFloor = typeof floor === 'number' ? floor : DEFAULT_FLOOR;
     var grid = gridFrom(rows);
+    var near = Score.besideHomesGrid(grid);
     var colCount = CFG.grid.cols;
     var rowCount = CFG.grid.rows;
     var limits = limitsFor(grid, reportFloor);
@@ -528,7 +537,7 @@ var Balance = (function (CFG, Score) {
              somebody is reconstructing a route. It says which cell the line
              is stepping FROM and which it is stepping ON TO, which is the
              one thing the packed numbers themselves cannot remember. */
-          var atEntry = advance({ sub: sub, list: list }, grid[rIn][col], limits,
+          var atEntry = advance({ sub: sub, list: list }, grid[rIn][col], near[rIn][col], limits,
             tracer && tracer.step(col - 1, rIn, sub, col, rIn, grid[rIn][col]));
           if (!atEntry) { continue; }
           merge(leaving[rIn][atEntry.sub], atEntry.list);
@@ -539,7 +548,7 @@ var Balance = (function (CFG, Score) {
             var fromRow = rIn;
             for (var r = rIn + step; r >= 0 && r < rowCount; r += step) {
               var was = run;
-              run = advance(was, grid[r][col], limits,
+              run = advance(was, grid[r][col], near[r][col], limits,
                 tracer && tracer.step(col, fromRow, was.sub, col, r, grid[r][col]));
               if (!run) { break; }
               merge(leaving[r][run.sub], run.list);
@@ -668,23 +677,23 @@ var Balance = (function (CFG, Score) {
   }
 
   // What one cell on one technology adds, in the search's packed units.
-  function deltaOf(typeId, tech) {
-    var type = CFG.cellTypes[typeId];
+  function deltaOf(typeId, tech, beside) {
+    var span = Score.scoreSegment(typeId, tech.id, beside);
     return delta(
-      Math.round(Score.costOf(type, tech) * 10),
-      Math.round(type.envImpact * tech.impactMult * 10),
-      Math.round(type.commImpact * tech.impactMult * 10)
+      Math.round(span.cost * 10),
+      Math.round(span.env * 10),
+      Math.round(span.comm * 10)
     );
   }
 
   /* Which technology was used, read back off the amount the step added.
      Two technologies scoring identically on one kind of ground would be
      indistinguishable here, and either answer would be right. */
-  function techFromDelta(typeId, added) {
+  function techFromDelta(typeId, beside, added) {
     for (var i = 0; i < CFG.technologies.length; i++) {
       var tech = CFG.technologies[i];
       if (tech.bansTerrain.indexOf(typeId) !== -1) { continue; }
-      if (deltaOf(typeId, tech) === added) { return tech.id; }
+      if (deltaOf(typeId, tech, beside) === added) { return tech.id; }
     }
     return null;
   }
@@ -720,16 +729,17 @@ var Balance = (function (CFG, Score) {
     explore(rows, typeof floor === 'number' ? floor : DEFAULT_FLOOR, tracer);
 
     var grid = gridFrom(rows);
+    var near = Score.besideHomesGrid(grid);
     var subs = CFG.rules.requireSubstation ? [1] : [1, 0];
 
     for (var i = 0; i < subs.length; i++) {
-      var chain = walkBack(parents, grid, CFG.end.col, CFG.end.row, subs[i], packedTarget);
+      var chain = walkBack(parents, grid, near, CFG.end.col, CFG.end.row, subs[i], packedTarget);
       if (chain) { return chain; }
     }
     return null;
   }
 
-  function walkBack(parents, grid, col, row, sub, packed) {
+  function walkBack(parents, grid, near, col, row, sub, packed) {
     var chain = [];
     var at = { col: col, row: row, sub: sub, packed: packed };
 
@@ -743,11 +753,13 @@ var Balance = (function (CFG, Score) {
       if (!found) { return null; }
 
       var typeId = grid[at.row][at.col];
+      var beside = near[at.row][at.col];
       chain.push({
         col: at.col,
         row: at.row,
         typeId: typeId,
-        techId: techFromDelta(typeId, found.added)
+        techId: techFromDelta(typeId, beside, found.added),
+        beside: beside
       });
 
       at = { col: found.col, row: found.row, sub: found.sub, packed: found.packed };
@@ -786,7 +798,7 @@ var Balance = (function (CFG, Score) {
 
     var reason = 'ok';
     if (!solvable) {
-      reason = 'no route reaches the demand centre through a substation';
+      reason = 'no route reaches the grid supply point through a substation';
     } else if (!scoreable) {
       reason = 'every route is ruinous on cost or environment';
     } else if (!balanced) {

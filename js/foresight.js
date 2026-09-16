@@ -60,7 +60,7 @@ var Foresight = (function (CFG, Score, Balance) {
      a version that only remembers yes or no.
      ------------------------------------------------------------------- */
 
-  function sweep(grid, closed, target, start, step, tidy) {
+  function sweep(grid, near, closed, target, start, step, tidy) {
     var rowCount = CFG.grid.rows;
     var entering = null;
 
@@ -80,7 +80,7 @@ var Foresight = (function (CFG, Score, Balance) {
           }
           if (closed[rIn][col]) { continue; }
 
-          var atEntry = step(bundle, grid[rIn][col]);
+          var atEntry = step(bundle, grid[rIn][col], near[rIn][col]);
           if (!atEntry) { continue; }
           core.merge(leaving[rIn][atEntry.sub], atEntry.list);
 
@@ -90,7 +90,7 @@ var Foresight = (function (CFG, Score, Balance) {
             for (var r = rIn + dir; r >= 0 && r < rowCount; r += dir) {
               // The line may not cross itself, so its own squares end a run.
               if (closed[r][col]) { break; }
-              run = step(run, grid[r][col]);
+              run = step(run, grid[r][col], near[r][col]);
               if (!run) { break; }
               core.merge(leaving[r][run.sub], run.list);
             }
@@ -181,14 +181,15 @@ var Foresight = (function (CFG, Score, Balance) {
     };
 
     var limits = core.limitsFor(grid, reportFloor);
-    var finished = sweep(grid, closed, target, start, function (bundle, typeId) {
-      return core.advance(bundle, typeId, limits);
+    var near = Score.besideHomesGrid(grid);
+    var finished = sweep(grid, near, closed, target, start, function (bundle, typeId, beside) {
+      return core.advance(bundle, typeId, beside, limits);
     }, core.prune);
 
     if (!finished.length) {
       /* Nothing scored above the floor. Whether that is because nothing
          gets through at all is a separate, much cheaper question. */
-      var through = sweep(grid, closed, target, { sub: sub, list: [0] }, passStep, passTidy);
+      var through = sweep(grid, near, closed, target, { sub: sub, list: [0] }, passStep, passTidy);
       return through.length
         ? { status: 'belowFloor', floor: reportFloor }
         : { status: 'blocked' };
@@ -300,7 +301,8 @@ var Foresight = (function (CFG, Score, Balance) {
           var typeId = Score.typeIdAt(at.col, at.row);
           if (!typeId || !CFG.cellTypes[typeId].passable) { break; }
           var techs = CFG.technologies.filter(function (t) { return t.bansTerrain.indexOf(typeId) === -1; });
-          route.push({ col: at.col, row: at.row, typeId: typeId, techId: techs[roll(techs.length)].id });
+          route.push({ col: at.col, row: at.row, typeId: typeId, techId: techs[roll(techs.length)].id,
+            beside: Score.besideHomes(at.col, at.row) });
 
           var options = [[1, 0], [0, -1], [0, 1]].map(function (d) {
             return { col: at.col + d[0], row: at.row + d[1] };
@@ -332,7 +334,8 @@ var Foresight = (function (CFG, Score, Balance) {
       for (var c = 0; c < CFG.end.col; c++) {
         var t = Score.typeIdAt(c, CFG.end.row);
         if (!CFG.cellTypes[t].passable) { costly = null; break; }
-        costly.push({ col: c, row: CFG.end.row, typeId: t, techId: t === 'river' ? 'lattice' : 'cable' });
+        costly.push({ col: c, row: CFG.end.row, typeId: t, techId: t === 'river' ? 'lattice' : 'cable',
+          beside: Score.besideHomes(c, CFG.end.row) });
       }
       if (costly && Score.scoreRoute(costly).dials.cost < core.DEFAULT_FLOOR) {
         var broke = timed(rows, costly, { col: CFG.end.col, row: CFG.end.row });

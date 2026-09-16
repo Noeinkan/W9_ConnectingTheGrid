@@ -191,8 +191,10 @@ var Tour = (function (CFG) {
   function place() {
     if (!isOpen) { return; }
     var target = locate(steps()[at].at);
-    var margin = 12;
-    var pad = 6;
+    // Spacing in rem, so it grows with the rest of the page on a big screen.
+    var rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    var margin = 0.75 * rem;
+    var pad = 0.375 * rem;
     var vw = window.innerWidth;
     var vh = window.innerHeight;
     var card = els.card;
@@ -213,7 +215,7 @@ var Tour = (function (CFG) {
     els.spot.style.width = Math.round(box.width + pad * 2) + 'px';
     els.spot.style.height = Math.round(box.height + pad * 2) + 'px';
 
-    var gap = pad + 14;
+    var gap = pad + 0.875 * rem;
     var left;
     var top;
     if (vw - box.right >= width + gap + margin) {
