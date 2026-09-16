@@ -10,6 +10,7 @@
 <link rel="stylesheet" href="css/style.css">
 <link rel="stylesheet" href="css/mapmotion.css">
 <link rel="stylesheet" href="css/guidance.css">
+<link rel="stylesheet" href="css/techpick.css">
 <link rel="stylesheet" href="css/summary.css">
 <link rel="stylesheet" href="css/howto.css">
 <link rel="stylesheet" href="css/bigscreen.css">
@@ -129,6 +130,9 @@
         <div class="art-layer" id="art"></div>
         <div class="board" id="board"></div>
         <div class="chevrons" id="chevrons" aria-hidden="true"></div>
+        <!-- 1, 2 and 3 on a square the line can go into next, while the
+             mouse is on it: a direction and a technology in one click. -->
+        <div class="techpick" id="techpick" aria-hidden="true" hidden></div>
         <div class="tip" id="tip" role="presentation" hidden></div>
       </div>
     </div>
@@ -195,8 +199,9 @@
        routeart config, mapart
        render   config, score, mapart, routeart, mapmotion
        guidance config, score, advice, render
+       techpick config, score, advice, render
        tour     config
-       howtoboard   config, rng, advice, mapart, routeart, mapsymbols
+       howtoboard   config, rng, score, advice, guidance, mapart, routeart, mapsymbols
        howtoart     config, score, advice, howtoboard
        howto        config, howtoart
        archetypes   config, rng, mapgen, balance
@@ -219,6 +224,7 @@
 <script src="js/routeart.js"></script>
 <script src="js/render.js"></script>
 <script src="js/guidance.js"></script>
+<script src="js/techpick.js"></script>
 <script src="js/tour.js"></script>
 <script src="js/howtoboard.js"></script>
 <script src="js/howtoart.js"></script>

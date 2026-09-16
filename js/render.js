@@ -166,7 +166,12 @@ var Render = (function (CFG, Score, MapArt, RouteArt, MapMotion) {
     }
 
     handle = handlers;
-    container.addEventListener('mouseleave', hideTip);
+    container.addEventListener('mouseleave', function (event) {
+      // Onto the numbered buttons of js/techpick.js: they sit on the square the card describes.
+      var to = event.relatedTarget;
+      if (to && to.closest && to.closest('.techpick')) { return; }
+      hideTip();
+    });
     wireDragging(container, handlers);
     els.board = container;
   }
@@ -340,6 +345,8 @@ var Render = (function (CFG, Score, MapArt, RouteArt, MapMotion) {
   function paintChevrons(state) {
     var box = els.chevrons;
     box.innerHTML = '';
+    // Before the check below: a finished line has no way on, but can come down.
+    paintBackArrow(state, box);
     if (!state.target || !state.exits || !state.exits.length) { return; }
 
     state.exits.forEach(function (exit) {
@@ -374,6 +381,45 @@ var Render = (function (CFG, Score, MapArt, RouteArt, MapMotion) {
       }
       box.appendChild(button);
     });
+  }
+
+  /* The way back: a smaller arrow on the last span built, that takes it
+     down. The same as Undo, put where the eye already is. Only while there
+     is a span to take down and Undo is allowed.
+
+     It sits on the leg the line came in by and points back along it. Not
+     on the highlighted square: its three open sides hold the arrows, and
+     the fourth, the one the line comes in from, holds the technology
+     buttons of js/techpick.js. The far leg of the last span is the nearest
+     place nothing else claims, and the badge on a span is in its corner. */
+  function paintBackArrow(state, box) {
+    var last = state.route[state.route.length - 1];
+    if (!state.canUndo || !last) { return; }
+
+    var before = state.route[state.route.length - 2];
+    var side = !before ? CFG.start.entry
+      : before.row < last.row ? 'n'
+      : before.row > last.row ? 's'
+      : before.col > last.col ? 'e' : 'w';
+
+    var button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'chevron is-back';
+    button.tabIndex = -1;
+    button.setAttribute('aria-hidden', 'true');
+    button.title = CFG.copy.chevronBackLabel;
+
+    var step = STEP[side];
+    button.style.setProperty('--cx', last.col + 0.5 + step[0] * 0.3);
+    button.style.setProperty('--cy', last.row + 0.5 + step[1] * 0.3);
+    button.style.setProperty('--rot', TURN[side] + 'deg');
+
+    var art = svgNode('svg', { viewBox: '0 0 100 100', focusable: 'false' });
+    art.appendChild(svgNode('path', { d: ARROW }));
+    button.appendChild(art);
+
+    button.addEventListener('click', function () { handle.onUndo(); });
+    box.appendChild(button);
   }
 
   /* ---------------------------------------------------------------------

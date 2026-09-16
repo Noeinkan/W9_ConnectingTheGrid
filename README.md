@@ -201,6 +201,16 @@ so a corridor that does not add up is never shown at all.
   that way. Clicking the square itself carries straight on, which makes a long
   run one click per square. Holding the button down and dragging draws a run in
   one gesture, and dragging back over the line rubs it out.
+- **Building on a technology in one click:** rest the mouse on a square an
+  arrow points into and three numbered buttons appear in it — 1 lattice,
+  2 T-pylons, 3 cable, the order of the number keys. Clicking one sends the
+  line there on that technology, which also becomes the one chosen on the
+  rail. The span it builds is on the highlighted square, not the one under
+  the pointer, so the buttons read the highlighted square: a technology not
+  allowed there is struck through, the one that suits it is starred, and a
+  refused click changes nothing. The land card of that square keeps its own
+  figures and says so underneath. Mouse only, and not on a square the line
+  already crosses, where a click takes the line back.
 - **Going back:** clicking any square already on the line takes the line back
   to that square — it and everything after it come down, and the square is in
   play again, so the wrong turn can be made the other way. The square itself
@@ -558,6 +568,7 @@ pretending otherwise makes both unusable.
 index.html        markup and script order
 css/style.css     all styling, including the colours of the landscape
 css/guidance.css  the forecast, Why?, span tints, land card numbers and the tour
+css/techpick.css  the 1, 2 and 3 buttons on the squares ahead
 css/howto.css     the How to play sheet and its pictures
 css/mapmotion.css the landscape's motion: water, traffic, plants, smoke, clouds
 css/bigscreen.css the game growing with the screen, and kiosk mode's styles
@@ -575,6 +586,7 @@ js/mapmotion.js   what moves in it: river, traffic, ripples, plants, smoke, clou
 js/routeart.js    draws the route and the best route found over it
 js/render.js      everything else that writes to the page. No state, no rules
 js/guidance.js    dresses render's meters, buttons, board and land card with advice
+js/techpick.js    1, 2 and 3 on the squares ahead: a direction and a technology in one click
 js/tour.js        the five-step tour
 js/howto.js       the How to play sheet: cards of pictures, played while it is open
 js/howtoart.js    the pictures on it, scored with the game's own numbers

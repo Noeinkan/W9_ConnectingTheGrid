@@ -28,7 +28,7 @@
    ========================================================================= */
 
 var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Guidance, Tour,
-                      Archetypes, SummaryPanel) {
+                      Archetypes, SummaryPanel, TechPick) {
   'use strict';
 
   /* ---------------------------------------------------------------------
@@ -304,6 +304,19 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
     if (!exit) { return say(CFG.copy.errWrongSquare, 'error'); }
     // Not filtered on exit.ok: check() inside place() knows why, and says so.
     return place(state.target.col, state.target.row, exit.pieceId);
+  }
+
+  /* The same, on a technology picked in the same click - the numbered
+     buttons of js/techpick.js. The technology stays chosen afterwards, as
+     if it had been picked on the rail first. A refused span leaves it as it
+     was: a click that builds nothing should change nothing. */
+  function stepWith(col, row, techId) {
+    var before = state.currentTech;
+    state.currentTech = Score.technology(techId).id;
+    if (stepTo(col, row)) { return true; }
+    state.currentTech = before;
+    refresh();
+    return false;
   }
 
   /* What building the highlighted square would do to the three dials,
@@ -747,6 +760,8 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
     Render.paint(state);
     Guidance.paint(state);
     SummaryPanel.paint(state);
+    // After Guidance: the land card it may write again reads what Guidance painted.
+    TechPick.paint(state);
     Render.setCursor(cursor.col, cursor.row, false);
   }
 
@@ -947,10 +962,13 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
       onActivate: onCellActivate,
       onFocus: onCellFocus,
       onStep: stepTo,
+      onUndo: undo,
       canStartDrag: canStartDrag,
       onDragOver: onDragOver
     });
     Render.buildTechPicker(Render.elements.tech, setTech);
+    // 1, 2 and 3 on the squares ahead: a direction and a technology in one click.
+    TechPick.build({ onBuild: stepWith });
     Render.buildMeters(Render.elements.meters);
     Render.buildLegend(Render.elements.legend);
     // The How to play sheet. Its pictures play only while it is open.
@@ -1043,6 +1061,7 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
     init: init,
     newMap: newMap,
     stepTo: stepTo,
+    stepWith: stepWith,
     explainLast: explainLast,
     explainDial: explainDial,
     lookAhead: lookAhead,
@@ -1055,7 +1074,7 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
   };
 
 }(CONFIG, Score, Render, MapGen, Balance, Foresight, Advice, Guidance, Tour,
-  Archetypes, SummaryPanel));
+  Archetypes, SummaryPanel, TechPick));
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', Game.init);

@@ -92,12 +92,6 @@
   border-radius: var(--brand-radius);
 }
 
-/* Nothing in a picture can be pressed, so nothing may look pressable. */
-.howto-picture .tech,
-.howto-picture .btn,
-.howto-picture .meter-why,
-.howto-picture .archetype,
-.howto-picture .forecast-label { cursor: default; }
 .howto-picture .meter-marker,
 .howto-picture .meter-preview { transition-duration: 450ms; }
 
@@ -162,6 +156,29 @@
   stroke-dasharray: 7 5;
 }
 .howto-chevron.is-trap path { fill: var(--guide-map-loss); }
+/* The way back: smaller, and slate like the map's own. */
+.howto-chevron.is-back circle { fill: #3d4149; stroke-width: 3; }
+.howto-chevron.is-back path { fill: var(--brand-map-paper); }
+
+/* The pointer's own sheet, over the buttons and the land card. */
+.howto-over {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+}
+
+/* The land card, a little smaller than on the map: a picture has fewer
+   squares above the one it describes. Scaled from its top left corner, so
+   the scaled card still sits centred over its square. */
+.howto-land-card { scale: 0.8; transform-origin: 0 0; }
+@media (max-width: 40rem) {
+  .howto-land-card { scale: 0.66; }
+}
+
+/* The game's own 1, 2 and 3 buttons and land card are laid in the picture,
+   and nothing in a picture may be pressed or hovered. */
+.howto-picture,
+.howto-picture * { pointer-events: none !important; cursor: default !important; }
 
 /* A span that cost points for good, washed as the board's cells are. */
 .howto-mood.is-slipped { fill: rgb(224 161 38 / 0.32); }

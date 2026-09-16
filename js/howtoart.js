@@ -163,7 +163,7 @@ var HowToArt = (function (CFG, Score, Advice, HowToBoard) {
     for (var built = 0; built < 7; built++) {
       frames.push({ route: along(1, 0, built), target: [built, 1], arrows: false });
     }
-    var done = { route: along(1, 0, 7), done: true };
+    var done = { route: along(1, 0, 7), done: true, arrows: false };
     frames.push(done, done, done, done);
     return storyboard(map.el, frames, 7, map.paint);
   }
@@ -201,14 +201,17 @@ var HowToArt = (function (CFG, Score, Advice, HowToBoard) {
     ], 5, map.paint);
   }
 
-  // Click a square on the line: the line comes back to it, to choose again.
+  /* The small dark arrow takes the last span down; a click on a square of
+     the line takes it back to there, to choose again. The back arrow sits
+     on the last span's incoming leg, 0.3 of a square back from its middle. */
   function back() {
     var map = board(['FWWFF', 'FFFFF', 'FFSSF']);
     var rest = [455, 265];
-    var whole = along(1, 0, 4);
     return storyboard(map.el, [
-      { route: whole, target: [4, 1], pointer: rest },
-      { route: whole, target: [4, 1], pointer: [150, 150] },
+      { route: along(1, 0, 4), target: [4, 1], pointer: rest },
+      { route: along(1, 0, 4), target: [4, 1], pointer: [320, 150] },
+      { route: along(1, 0, 3), target: [3, 1], pointer: [320, 150, 'press'] },
+      { route: along(1, 0, 3), target: [3, 1], pointer: [150, 150] },
       { route: [[0, 1]], target: [1, 1], pointer: [150, 150, 'press'] },
       { route: [[0, 1]], target: [1, 1], pointer: [150, 114] },
       { route: along(1, 0, 2), target: [1, 0], pointer: [150, 114, 'press'] },
@@ -217,11 +220,46 @@ var HowToArt = (function (CFG, Score, Advice, HowToBoard) {
     ], 4, map.paint);
   }
 
+  /* Rest the mouse on a square ahead and 1, 2 and 3 appear in it: one click
+     sends the line there on that technology. Over designated land, where
+     the T-pylon is starred - and 2 is the one pressed. */
+  function keys() {
+    var map = board(['FWWFF', 'FSSFF', 'FFTTF']);
+    var rest = [455, 265];
+    var one = [[0, 1]];
+    var two = [[0, 1], [1, 1, 'tpylon']];
+    return storyboard(map.el, [
+      { route: one, target: [1, 1], pointer: rest },
+      { route: one, target: [1, 1], pointer: [262, 188], keys: [2, 1] },
+      { route: one, target: [1, 1], pointer: [252, 152], keys: [2, 1] },
+      { route: one, target: [1, 1], pointer: [252, 152], keys: [2, 1] },
+      { route: two, target: [2, 1], pointer: [252, 152, 'press'], tech: 'tpylon' },
+      { route: two, target: [2, 1], pointer: [252, 152], tech: 'tpylon' },
+      { route: two, target: [2, 1], pointer: rest, tech: 'tpylon' }
+    ], 2, map.paint);
+  }
+
+  /* The land card, over three squares in turn: woodland, farmland beside
+     houses, and the houses themselves - each with a different star. */
+  function card() {
+    var map = board(['FFFF', 'FFFF', 'WFTF']);
+    var route = [[0, 0], [1, 0]];
+    return storyboard(map.el, [
+      { route: route, target: [2, 0], pointer: [355, 60] },
+      { route: route, target: [2, 0], pointer: [55, 255], card: [0, 2] },
+      { route: route, target: [2, 0], pointer: [55, 255], card: [0, 2] },
+      { route: route, target: [2, 0], pointer: [155, 255], card: [1, 2] },
+      { route: route, target: [2, 0], pointer: [155, 255], card: [1, 2] },
+      { route: route, target: [2, 0], pointer: [255, 255], card: [2, 2] },
+      { route: route, target: [2, 0], pointer: [255, 255], card: [2, 2] }
+    ], 3, map.paint);
+  }
+
   // A square in play with a way on, a way into water, and a way into the line.
   function trap() {
-    var map = board(['FFFWW', '~FFFW', '~FFTT']);
+    var map = board(['FFFW', '~FFW', '~FTT']);
     var route = [[0, 0], [1, 0], [2, 0], [2, 1]];
-    var rest = [455, 265];
+    var rest = [355, 265];
     var copy = CFG.copy;
     // Each note hangs under the arrow it is about, as the tooltip does on the map.
     var water = {
@@ -271,7 +309,11 @@ var HowToArt = (function (CFG, Score, Advice, HowToBoard) {
       if (tech.summary) { put(about, 'p', 'howto-tech-summary', tech.summary); }
 
       var grounds = put(row, 'ul', 'howto-grounds');
-      (suits[tech.id] || []).forEach(function (ground) { groundTile(grounds, ground, 'good'); });
+      // A ground whose land card stars another technology is left out, so the two never disagree.
+      (suits[tech.id] || []).filter(function (ground) {
+        var type = CFG.cellTypes[ground];
+        return !type || !type.pick || type.pick === tech.id;
+      }).forEach(function (ground) { groundTile(grounds, ground, 'good'); });
       (tech.bansTerrain || []).forEach(function (ground) { groundTile(grounds, ground, 'banned'); });
     });
     return still(box);
@@ -502,8 +544,8 @@ var HowToArt = (function (CFG, Score, Advice, HowToBoard) {
     put(put(key, 'span', 'howto-route-best'), 'span', 'howto-route-line');
     key.lastChild.appendChild(document.createTextNode(said.bestRoute));
 
-    var mine = { route: yours, done: true };
-    var both = { route: yours, done: true, ghost: found };
+    var mine = { route: yours, done: true, arrows: false };
+    var both = { route: yours, done: true, arrows: false, ghost: found };
     return storyboard(box, [mine, mine, both, both, both, both], 3, map.paint);
   }
 
@@ -583,7 +625,7 @@ var HowToArt = (function (CFG, Score, Advice, HowToBoard) {
   }
 
   var PICTURES = {
-    goal: goal, step: step, drag: drag, back: back, trap: trap,
+    goal: goal, step: step, keys: keys, drag: drag, back: back, trap: trap, card: card,
     techs: techs, land: land,
     preview: preview, verdict: verdict, forecast: forecast, why: why,
     best: best, kinds: kinds, modes: modes

@@ -5,8 +5,14 @@
    A few squares of landscape with a line on them, drawn the way the map
    draws them: region outlines from js/mapart.js, the line and its towers
    from js/routeart.js, the two ends from js/mapsymbols.js. Over them go
-   the square in play, its arrows, the tinted spans, pins, a tooltip and a
-   mouse pointer - everything a picture on the sheet needs to show a move.
+   the square in play, its arrows and the way back, the tinted spans, pins,
+   the 1, 2 and 3 buttons, a land card and a mouse pointer - everything a
+   picture on the sheet needs to show a move.
+
+   The 1, 2 and 3 buttons and the land card are the game's own markup and
+   classes (css/techpick.css, css/style.css, js/guidance.js), laid inside the
+   picture the way the map lays them over itself: in squares, from --cols
+   and --rows on the picture's box.
 
    The map symbols are not defined a second time. Every <use> here points at
    the <symbol> the live map has already put on the page, because a second
@@ -18,7 +24,7 @@
    Exposes one global: HowToBoard.
    ========================================================================= */
 
-var HowToBoard = (function (CFG, Rng, Advice, MapArt, RouteArt, MapSymbols) {
+var HowToBoard = (function (CFG, Rng, Score, Advice, Guidance, MapArt, RouteArt, MapSymbols) {
   'use strict';
 
   var NS = 'http://www.w3.org/2000/svg';
@@ -127,7 +133,17 @@ var HowToBoard = (function (CFG, Rng, Advice, MapArt, RouteArt, MapSymbols) {
     function typeAt(col, row) { return CFG.legend[letterAt(col, row)] || 'farmland'; }
     function onBoard(col, row) { return col >= 0 && col < cols && row >= 0 && row < count; }
 
+    // Rows of cell type ids, as Score.besideHomes reads a landscape.
+    var grid = rows.map(function (line, row) {
+      return line.split('').map(function (letter, col) { return typeAt(col, row); });
+    });
+    function beside(col, row) {
+      return CFG.cellTypes[typeAt(col, row)].passable && Score.besideHomes(col, row, grid);
+    }
+
     var wrap = put(null, 'div', 'howto-board');
+    wrap.style.setProperty('--cols', cols);
+    wrap.style.setProperty('--rows', count);
     var sheet = add(wrap, 'svg', {
       class: 'howto-map', viewBox: '0 0 ' + width + ' ' + height,
       focusable: 'false', 'aria-hidden': 'true'
@@ -155,8 +171,14 @@ var HowToBoard = (function (CFG, Rng, Advice, MapArt, RouteArt, MapSymbols) {
     var moodLayer = add(sheet, 'g', { class: 'howto-moods' });
     var ring = add(sheet, 'rect', { class: 'howto-target', width: U - 8, height: U - 8, rx: 3 });
     var arrows = add(sheet, 'g', { class: 'howto-chevrons' });
-    var hand = pointer(sheet);
     var notes = put(wrap, 'div', 'howto-notes');
+    // The buttons and the land card go here, under the pointer's own sheet.
+    var extras = put(wrap, 'div', 'howto-extras');
+    var over = add(wrap, 'svg', {
+      class: 'howto-map howto-over', viewBox: '0 0 ' + width + ' ' + height,
+      focusable: 'false', 'aria-hidden': 'true'
+    });
+    var hand = pointer(over);
 
     // Where a point in map units sits on the picture, as percentages.
     function place(node, x, y) {
@@ -174,7 +196,6 @@ var HowToBoard = (function (CFG, Rng, Advice, MapArt, RouteArt, MapSymbols) {
        out: the edge of a picture is not the edge of the map, and marking it
        as a dead end would teach the wrong thing. */
     function paintArrows(target, cells) {
-      arrows.innerHTML = '';
       var at = { col: target[0], row: target[1] };
       var head = cells[cells.length - 1];
       var entry = head ? sideBetween(at, head) : CFG.start.entry;
@@ -197,6 +218,98 @@ var HowToBoard = (function (CFG, Rng, Advice, MapArt, RouteArt, MapSymbols) {
           d: ARROW, transform: 'rotate(' + TURN[dir] + ') translate(-13.8 -13.8) scale(0.276)'
         });
       });
+    }
+
+    /* The way back: the small dark arrow on the last span, on the leg the
+       line came in by, pointing back along it. Placed as render.js places it. */
+    function paintBack(cells) {
+      var last = cells[cells.length - 1];
+      var before = cells[cells.length - 2];
+      var side = before ? sideBetween(last, before) : CFG.start.entry;
+      var chevron = add(arrows, 'g', {
+        class: 'howto-chevron is-back',
+        transform: 'translate(' + n((last.col + 0.5 + STEP[side][0] * 0.3) * U) + ' ' +
+                   n((last.row + 0.5 + STEP[side][1] * 0.3) * U) + ')'
+      });
+      add(chevron, 'circle', { r: 16 });
+      add(chevron, 'path', {
+        d: ARROW, transform: 'rotate(' + TURN[side] + ') translate(-9.6 -9.6) scale(0.192)'
+      });
+    }
+
+    /* The 1, 2 and 3 buttons in a square ahead of the one in play, as
+       js/techpick.js dresses them: they build on the square in play, so they
+       read its ground - struck through where not allowed, starred where they
+       suit it. `chosen` is the technology in use, which is ringed. */
+    var keysShown = null;
+    var cardShown = null;
+
+    function paintKeys(at, target, chosen) {
+      // Left alone while nothing about them changes, or they would fade in again every frame.
+      var said = at && target ? [at, target, chosen].join('|') : null;
+      if (said === keysShown) { return; }
+      keysShown = said;
+      extras.querySelectorAll('.techpick').forEach(function (layer) { layer.remove(); });
+      if (!said) { return; }
+
+      var dir = sideBetween({ col: target[0], row: target[1] }, { col: at[0], row: at[1] });
+      var typeId = typeAt(target[0], target[1]);
+      var near = beside(target[0], target[1]);
+      var type = CFG.cellTypes[typeId];
+      var suits = near && type.pickBeside ? type.pickBeside : type.pick;
+
+      var layer = put(extras, 'div', 'techpick');
+      layer.dataset.axis = dir === 'n' || dir === 's' ? 'across' : 'down';
+      layer.style.setProperty('--x', at[0] + 0.5);
+      layer.style.setProperty('--y', at[1] + 0.5);
+      put(layer, 'span', 'techpick-back');
+
+      CFG.technologies.forEach(function (tech, index) {
+        var key = put(layer, 'span', 'techpick-key tech-' + tech.id, String(index + 1));
+        key.style.setProperty('--i', index - (CFG.technologies.length - 1) / 2);
+        var span = Advice.spanOn(typeId, tech.id, near);
+        key.classList.toggle('is-chosen', chosen === tech.id);
+        key.classList.toggle('is-banned', !!span.banned);
+        key.classList.toggle('is-pick', !span.banned && suits === tech.id);
+      });
+    }
+
+    /* The land card over a square: its name and short line from render.js's
+       card, and the rows of figures js/guidance.js adds under them. */
+    function paintCard(at, chosen) {
+      var said = at ? [at, chosen].join('|') : null;
+      if (said === cardShown) { return; }
+      cardShown = said;
+      extras.querySelectorAll('.tip').forEach(function (card) { card.remove(); });
+      if (!said) { return; }
+
+      var typeId = typeAt(at[0], at[1]);
+      var type = CFG.cellTypes[typeId];
+      var card = put(extras, 'div', 'tip howto-land-card');
+      var head = put(card, 'span', 'tip-head');
+      var icon = put(head, 'span', 'tip-icon');
+      icon.style.setProperty('--land', 'var(--brand-land-' + typeId + ', var(--brand-land-farmland))');
+      if (type.icon) { icon.style.backgroundImage = 'url("' + type.icon + '")'; }
+      put(head, 'strong', 'tip-name', type.label);
+      put(head, 'span', 'tip-brief', type.brief || type.description);
+
+      // The note only where a technology allowed here pays extra for being seen.
+      var near = beside(at[0], at[1]);
+      var seen = near && CFG.besideHomes && CFG.technologies.some(function (tech) {
+        return (CFG.besideHomes.comm[tech.id] || 0) !== 0 && Score.canUseTech(tech.id, typeId);
+      });
+      if (seen) { put(card, 'span', 'tip-beside', CFG.copy.besideHomesNote); }
+      if (type.passable) {
+        card.appendChild(Guidance.techRows(typeId, near,
+          near && type.pickBeside ? type.pickBeside : type.pick, chosen));
+      }
+
+      // Above the square, or below it where there is no room above.
+      var below = at[1] < 2;
+      card.style.setProperty('--cx', at[0] + 0.5);
+      card.style.setProperty('--cy', below ? at[1] + 1 : at[1]);
+      if (below) { card.setAttribute('data-below', ''); }
+      card.dataset.edge = at[0] === 0 ? 'left' : at[0] === cols - 1 ? 'right' : '';
     }
 
     function paintMoods(moods) {
@@ -249,11 +362,18 @@ var HowToBoard = (function (CFG, Rng, Advice, MapArt, RouteArt, MapSymbols) {
         ring.setAttribute('x', target[0] * U + 4);
         ring.setAttribute('y', target[1] * U + 4);
       }
-      if (target && frame.arrows !== false) { paintArrows(target, cells); } else { arrows.innerHTML = ''; }
+      arrows.innerHTML = '';
+      if (frame.arrows !== false) {
+        if (target) { paintArrows(target, cells); }
+        if (cells.length && !frame.quiet) { paintBack(cells); }
+      }
 
       if (frame.outlook) { wrap.dataset.outlook = frame.outlook; } else { delete wrap.dataset.outlook; }
       paintMoods(frame.moods);
       paintTip(frame.tip);
+      var chosen = frame.tech || CFG.defaultTechnology;
+      paintKeys(frame.keys, target, chosen);
+      paintCard(frame.card, chosen);
       movePointer(hand, frame.pointer);
     }
 
@@ -423,4 +543,4 @@ var HowToBoard = (function (CFG, Rng, Advice, MapArt, RouteArt, MapSymbols) {
 
   return { board: board };
 
-}(CONFIG, Rng, Advice, MapArt, RouteArt, MapSymbols));
+}(CONFIG, Rng, Score, Advice, Guidance, MapArt, RouteArt, MapSymbols));

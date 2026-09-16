@@ -131,7 +131,9 @@ var Advice = (function (CFG, Score) {
   function moodSentence(mood, spans, committed) {
     var copy = CFG.copy;
     if (!mood) { return null; }
-    if (mood.kind === 'lost') { return committed ? copy.moodLostCommitted : copy.moodLost; }
+    if (mood.kind === 'lost') {
+      return fill(committed ? copy.moodLostCommitted : copy.moodLost, { threshold: CFG.balancedThreshold });
+    }
     if (mood.kind === 'blocked') { return committed ? copy.moodBlockedCommitted : copy.moodBlocked; }
     if (mood.kind === 'slipped' && mood.drop !== null) {
       return fill(copy.moodSlipped, { n: spans, drop: num(mood.drop) });
@@ -142,7 +144,8 @@ var Advice = (function (CFG, Score) {
   // The same, said about a span already on the map (tooltip, cell label).
   function routeMoodNote(mood) {
     if (!mood) { return ''; }
-    if (mood.kind === 'lost' || mood.kind === 'blocked') { return CFG.copy.routeMoodLost; }
+    if (mood.kind === 'lost') { return fill(CFG.copy.routeMoodLost, { threshold: CFG.balancedThreshold }); }
+    if (mood.kind === 'blocked') { return CFG.copy.routeMoodBlocked; }
     if (mood.kind === 'slipped' && mood.drop !== null) {
       return fill(CFG.copy.routeMoodSlipped, { drop: num(mood.drop) });
     }
@@ -264,7 +267,7 @@ var Advice = (function (CFG, Score) {
         } else if (now.status === 'belowFloor' && was.status !== 'belowFloor') {
           parts.push(fill(copy.explainGone, { floor: now.floor }));
         } else if (scored(was) && scored(now)) {
-          var values = { before: num(was.weakest), after: num(now.weakest) };
+          var values = { before: num(was.weakest), after: num(now.weakest), threshold: CFG.balancedThreshold };
           if (was.balanced && !now.balanced) {
             parts.push(fill(copy.explainLost, values));
           } else if (now.weakest < was.weakest) {
@@ -409,6 +412,10 @@ var Advice = (function (CFG, Score) {
     check('the badge carries the number', moodBadge({ kind: 'slipped', drop: 2.5 }), '-2.5');
     check('the badge marks a lost verdict', moodBadge({ kind: 'lost', drop: 0.3 }), '!');
     check('nothing to say about a kept span', moodSentence({ kind: 'kept', drop: 0 }, 3, false), null);
+    check('a lost verdict names the threshold',
+      routeMoodNote({ kind: 'lost', drop: 0.3 }).indexOf(CFG.balancedThreshold + ' or more') !== -1, true);
+    check('a dead end is not called a lost verdict',
+      routeMoodNote({ kind: 'blocked', drop: null }) === routeMoodNote({ kind: 'lost', drop: 0.3 }), false);
 
     check('numbers lose floating point dust', num(-3 * 0.7), '-2.1');
     check('and never read "-0"', num(-0.001), '0');

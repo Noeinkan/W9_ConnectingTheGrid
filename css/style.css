@@ -947,6 +947,18 @@ h1, h2, h3 { line-height: 1.25; margin: 0; }
   opacity: 0.8;
 }
 
+/* The way back, on the last span built: it takes that span down. Smaller, and slate rather than the accent blue, so it never reads
+   as one more direction to build in. A literal colour, like the map
+   furniture it sits with, so it keeps its look in dark mode. */
+.chevron.is-back {
+  width: calc(100% / var(--cols, 11) * 0.32);
+  height: calc(100% / var(--rows, 9) * 0.32);
+  min-width: 1rem;
+  min-height: 1rem;
+  color: var(--brand-map-paper);
+  background: #3d4149;
+}
+
 
 /* -------------------------------------------------------------------------
    The land card

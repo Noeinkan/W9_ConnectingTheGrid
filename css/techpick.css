@@ -1,0 +1,149 @@
+@charset "UTF-8";
+/* =========================================================================
+   Connecting the Grid - building a span with 1, 2 or 3
+   =========================================================================
+
+   Styles for js/techpick.js: three numbered buttons in the middle of a
+   square the line can go into next, while the mouse rests on it.
+
+   Placed the way the arrows are, in squares rather than pixels, so they
+   grow with the map - with a floor in rem, so a small map does not shrink
+   them past something a pointer can hit. The step between buttons has the
+   same floor, or on a small map they would pile on top of each other.
+
+   The colours are the map's, not the theme's, like the rest of the map
+   furniture: paper and the three technology colours, which do not flip in
+   the dark.
+   ---------------------------------------------------------------------- */
+.techpick {
+  position: absolute;
+  inset: 0;
+  z-index: 5;              /* over the arrows, under the land card */
+  pointer-events: none;
+  animation: techpick-in 140ms ease-out;
+}
+.techpick[hidden] { display: none; }
+
+@keyframes techpick-in { from { opacity: 0; } }
+
+/* How far apart the buttons sit. Across the square for a square above or
+   below the highlighted one, down it for one beside it: at right angles to
+   the arrow pointing in, which reaches over that edge. */
+/* Each measure twice, once for widths and left, once for heights and top:
+   a percentage there is of the map's width or of its height, and the map
+   has more columns than rows. 1.5rem apart at least, which is the 24px
+   spacing WCAG 2.5.8 asks of targets this small. */
+.techpick {
+  --key-w: max(100% / var(--cols, 11) * 0.28, 1.2rem);
+  --key-h: max(100% / var(--rows, 9) * 0.28, 1.2rem);
+  --step-w: max(100% / var(--cols, 11) * 0.335, 1.5rem);
+  --step-h: max(100% / var(--rows, 9) * 0.335, 1.5rem);
+}
+.techpick[data-axis="across"] { --step-x: var(--step-w); }
+.techpick[data-axis="down"]   { --step-y: var(--step-h); }
+
+.techpick-back,
+.techpick-key {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
+.techpick-back {
+  left: calc(var(--x, 0) * 100% / var(--cols, 11));
+  top: calc(var(--y, 0) * 100% / var(--rows, 9));
+  background: rgb(253 253 251 / 0.94);
+  border-radius: 999px;
+  box-shadow: 0 0.125rem 0.375rem rgb(0 0 0 / 0.35);
+}
+.techpick[data-axis="across"] .techpick-back {
+  width: calc(2 * var(--step-w) + var(--key-w) + 0.3rem);
+  height: calc(var(--key-h) + 0.45rem);
+}
+.techpick[data-axis="down"] .techpick-back {
+  width: calc(var(--key-w) + 0.45rem);
+  height: calc(2 * var(--step-h) + var(--key-h) + 0.3rem);
+}
+
+.techpick-key {
+  /* --i is -1, 0 or 1: which of the three, counted from the middle. */
+  left: calc(var(--x, 0) * 100% / var(--cols, 11) + var(--i, 0) * var(--step-x, 0px));
+  top: calc(var(--y, 0) * 100% / var(--rows, 9) + var(--i, 0) * var(--step-y, 0px));
+  width: var(--key-w);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: #fff;
+  background: var(--tech);          /* from .tech-<id> in css/style.css */
+  border: 0.125rem solid var(--brand-map-paper);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 120ms ease-out;
+}
+.techpick-key:hover {
+  filter: brightness(1.15);
+  transform: translate(-50%, -50%) scale(1.12);
+}
+
+/* The one in use now: ringed, so it is not told by colour alone. */
+.techpick-key.is-chosen {
+  box-shadow: 0 0 0 0.125rem var(--brand-accent);
+}
+
+/* The one that suits the highlighted square, starred as on its land card. */
+.techpick-key.is-pick::after {
+  content: "\2605";
+  position: absolute;
+  top: -0.45rem;
+  right: -0.4rem;
+  font-size: 0.62rem;
+  color: #c98a12;
+  text-shadow: 0 0 0.15rem var(--brand-map-paper), 0 0 0.15rem var(--brand-map-paper);
+  pointer-events: none;
+}
+/* Beside it in a column instead: above the top one, the land card's pointer
+   would cover it. */
+.techpick[data-axis="down"] .techpick-key.is-pick::after {
+  top: 50%;
+  right: -0.8rem;
+  transform: translateY(-50%);
+}
+
+/* Not allowed on the highlighted square: pale, hatched and struck through.
+   Still clickable, as the rail's button is, so the status line can say why. */
+.techpick-key.is-banned {
+  color: #6b6b72;
+  background: repeating-linear-gradient(135deg, #ecebe6 0 0.2rem, #d8d5cc 0.2rem 0.4rem);
+  text-decoration: line-through;
+  text-decoration-thickness: 0.1rem;
+  cursor: not-allowed;
+}
+
+/* A way that leaves the line stuck: the strip is dashed like its arrow. */
+.techpick.is-trap .techpick-back {
+  outline: 0.125rem dashed var(--guide-map-loss, #c8372a);
+  outline-offset: -0.125rem;
+}
+
+/* The land card's note on such a square: its figures are for a span here,
+   and the buttons build on the highlighted square. */
+.tip .tip-ahead {
+  display: block;
+  margin-top: 0.4rem;
+  padding: 0.2rem 0.4rem;
+  border-radius: var(--brand-radius-sm);
+  color: var(--brand-ink-muted);
+  background: var(--brand-surface-sunk);
+}
+
+@media (forced-colors: active) {
+  .techpick-back { border: 1px solid CanvasText; box-shadow: none; }
+  .techpick-key { forced-color-adjust: none; border: 1px solid CanvasText; }
+  .techpick-key.is-chosen { outline: 3px solid Highlight; box-shadow: none; }
+}

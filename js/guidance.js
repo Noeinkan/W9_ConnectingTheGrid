@@ -331,7 +331,7 @@ var Guidance = (function (CFG, Score, Advice, Render) {
     if (!els.chevrons) { return null; }
     var marked = els.chevrons.querySelector('.chevron[data-dir="' + exit.dir + '"]');
     if (marked) { return marked; }
-    var all = els.chevrons.querySelectorAll('.chevron');
+    var all = els.chevrons.querySelectorAll('.chevron:not(.is-back)');
     return all.length === state.exits.length ? all[index] : null;
   }
 
@@ -405,6 +405,12 @@ var Guidance = (function (CFG, Score, Advice, Render) {
       tip.appendChild(techRows(typeId, beside, pick));
     }
 
+    /* A square the line can go into next carries 1, 2 and 3 (js/techpick.js),
+       and they build on the highlighted square, not this one. Said here,
+       under this square's own figures, so those are not taken for the price. */
+    var ahead = aheadNote(col, row);
+    if (ahead) { tip.appendChild(el('span', 'tip-ahead', ahead)); }
+
     // On a span already built: what it cost of the best finish.
     if (painted && !blind()) {
       painted.route.forEach(function (segment, index) {
@@ -422,11 +428,30 @@ var Guidance = (function (CFG, Score, Advice, Render) {
     }
   }
 
+  function aheadNote(col, row) {
+    if (!painted || !painted.target) { return null; }
+    var into = (painted.exits || []).some(function (exit) {
+      return exit.to.col === col && exit.to.row === row;
+    });
+    var onLine = painted.route.some(function (span) { return span.col === col && span.row === row; });
+    if (!into || onLine) { return null; }
+
+    var target = painted.target;
+    var type = CFG.cellTypes[Score.typeIdAt(target.col, target.row)];
+    if (!type) { return null; }
+    var ground = type.passable && Score.besideHomes(target.col, target.row)
+      ? fill(CFG.copy.besideHomesLabel, { terrain: type.label })
+      : type.label;
+    return fill(CFG.copy.tipAheadNote, { terrain: ground.toLowerCase() });
+  }
+
   /* The square's numbers: one row per technology, a column per dial under
      its icon. The chosen technology is the highlighted row and the one that
      belongs on this square is starred, so the answer can be seen without
-     reading a number. */
-  function techRows(typeId, beside, pick) {
+     reading a number. Also drawn by the How to play pictures (js/howtoboard.js),
+     which pass the technology they show as chosen. */
+  function techRows(typeId, beside, pick, chosen) {
+    if (chosen === undefined) { chosen = painted && painted.currentTech; }
     var table = el('span', 'tip-techs');
 
     var head = el('span', 'tip-row tip-row-head');
@@ -441,7 +466,7 @@ var Guidance = (function (CFG, Score, Advice, Render) {
     CFG.technologies.forEach(function (tech) {
       var span = Advice.spanOn(typeId, tech.id, beside);
       var line = el('span', 'tip-row tech-' + tech.id);
-      line.classList.toggle('is-chosen', !!painted && painted.currentTech === tech.id);
+      line.classList.toggle('is-chosen', chosen === tech.id);
       line.classList.toggle('is-banned', !!span.banned);
 
       var name = el('span', 'tip-tech');
@@ -493,7 +518,8 @@ var Guidance = (function (CFG, Score, Advice, Render) {
   return {
     build: build,
     paint: paint,
-    showLook: showLook
+    showLook: showLook,
+    techRows: techRows
   };
 
 }(CONFIG, Score, Advice, Render));

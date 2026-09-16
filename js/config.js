@@ -996,6 +996,8 @@ var CONFIG = {
        is a choice about what comes NEXT. */
     chevronLabel: 'Send the line to the {side}, into {terrain}.',
     chevronDeadLabel: 'The line cannot go this way.',
+    // The small dark arrow pointing back along the line.
+    chevronBackLabel: 'Take the last span down.',
 
     // Read out for the four compass directions, in the messages above.
     sides: { n: 'top', e: 'right', s: 'bottom', w: 'left' },
@@ -1032,6 +1034,11 @@ var CONFIG = {
               body: 'The line can only leave the square it has reached, so only the highlighted square is in play. Click an arrow on it to send the line that way.'
             },
             {
+              picture: 'keys',
+              title: 'Direction and technology in one click',
+              body: 'Rest the mouse on a square the line can go into next, and 1, 2 and 3 appear in it. Click one to send the line there on that technology. The star marks the one that suits the highlighted square.'
+            },
+            {
               picture: 'drag',
               title: 'Carry on, or drag',
               body: 'Click the highlighted square itself to carry straight on, or hold the mouse down and drag to draw a whole run in one go.'
@@ -1039,12 +1046,17 @@ var CONFIG = {
             {
               picture: 'back',
               title: 'Change your mind',
-              body: 'Click any square already on the line to take the line back to it, and choose again from there. Dragging back over the line rubs it out.'
+              body: 'The small dark arrow pointing back along the line takes the last span down. Click any square already on the line to take the line back to it, and choose again from there. Dragging back over the line rubs it out.'
             },
             {
               picture: 'trap',
               title: 'Dead ends are marked',
               body: 'An arrow into water, off the map or back into the line is dashed in red: the line would be stuck there. Hover over an arrow to see where it leads.'
+            },
+            {
+              picture: 'card',
+              title: 'Read a square before you build',
+              body: 'Rest the mouse on any square for its land card: what the ground is, and what a span there costs on each technology. The star marks the technology that suits it, and beside houses the answer can change.'
             }
           ]
         },
@@ -1059,7 +1071,7 @@ var CONFIG = {
             {
               picture: 'land', wide: true,
               title: 'Every square has a price',
-              body: 'Each span pays for the ground it is built on, in cost, environment and community, and an overhead span beside houses costs community support as well. Hover over any square on the map to see what it costs on each technology. Connection funding pays you back, but it is never near the direct line.'
+              body: 'Each span pays for the ground it is built on, in cost, environment and community, and an overhead span beside houses costs community support as well. Connection funding pays you back, but it is never near the direct line.'
             }
           ]
         },
@@ -1182,15 +1194,19 @@ var CONFIG = {
     forecastSpoken: 'Best finish still open: {weakest}. {line}',
 
     /* Said in the status line when a span costs something that cannot be
-       got back. {drop} is how many points came off the best finish. */
+       got back. {drop} is how many points came off the best finish.
+       {threshold} is balancedThreshold. The consequence comes first, in
+       plain words, then the reason: players did not follow "put a route
+       that gets consent out of reach". */
     moodSlipped: '{n} spans built. That one cost {drop} off the best finish still open.',
-    moodLost: 'That span put a route that gets consent out of reach. Undo it to win the chance back.',
-    moodLostCommitted: 'That span put a route that gets consent out of reach, and in Committed mode it stays down.',
+    moodLost: 'That span cost you the chance of consent: no route found from here ends with every dial at {threshold} or more. Undo it to get the chance back.',
+    moodLostCommitted: 'That span cost you the chance of consent: no route found from here ends with every dial at {threshold} or more. In Committed mode it cannot be undone.',
     moodBlocked: 'That span leaves no way on to the grid supply point without doubling back. Undo it.',
     moodBlockedCommitted: 'That span leaves no way on to the grid supply point without doubling back.',
     // On the tooltip and the screen reader label of a span already built.
     routeMoodSlipped: 'This span cost {drop} off the best finish.',
-    routeMoodLost: 'This span put a route that gets consent out of reach.',
+    routeMoodLost: 'This span cost the chance of consent: no route found from here ends with every dial at {threshold} or more.',
+    routeMoodBlocked: 'This span is a dead end: no way on to the grid supply point found without doubling back.',
 
     /* "Explain last span" - the button under the forecast, and the E key. */
     // The button is short to share a line with the forecast; the label says it in full.
@@ -1207,7 +1223,7 @@ var CONFIG = {
     explainHeading: 'It sends the line to the {side}, into {terrain}.',
     explainKept: 'The best finish still open held at {after}.',
     explainDropped: 'The best finish still open fell from {before} to {after}.',
-    explainLost: 'The best finish still open fell from {before} to {after}, which puts a route that gets consent out of reach.',
+    explainLost: 'The best finish still open fell from {before} to {after}, below the {threshold} that consent needs.',
     explainGone: 'After it, no way on was found that keeps every dial above {floor}.',
     explainBlocked: 'After it, no way on to the grid supply point was found without doubling back.',
 
@@ -1234,6 +1250,14 @@ var CONFIG = {
     techBanned: 'Not here',
     techEffectSpoken: '{tech}. One span on {terrain}: cost {cost}, environment {env}, community {comm}.',
     techBannedSpoken: '{tech} cannot be used on {terrain}.',
+
+    /* The numbered buttons on a square the line can go into next - see
+       js/techpick.js. What they build is the span on the highlighted
+       square, so that is the ground they name. */
+    techPickTitle: '{key}: send the line to the {side} on {tech}. The span on {terrain}: {effect}',
+    techPickBanned: '{key}: {tech} cannot be used on {terrain}, the highlighted square.',
+    // On the land card of such a square, under its own figures.
+    tipAheadNote: '1, 2 or 3 on this square sends the line here, building on the highlighted {terrain}.',
 
     // The land card's table of what the square costs on each technology.
     tipTechBanned: 'not allowed',
