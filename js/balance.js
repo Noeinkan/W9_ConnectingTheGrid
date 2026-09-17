@@ -210,8 +210,8 @@ var Balance = (function (CFG, Score) {
 
      This is what keeps the sort out of the inner loop. Adding a technology's
      numbers to an ordered list shifts every entry by the same amount, so the
-     result is still ordered - and the three technology branches are three
-     ordered lists that only need interleaving, never re-sorting. */
+     result is still ordered - and one branch per technology gives that many
+     ordered lists, which only need interleaving, never re-sorting. */
   function mergeSorted(lists) {
     if (lists.length === 1) { return lists[0]; }
 
@@ -254,9 +254,9 @@ var Balance = (function (CFG, Score) {
 
   /* The technologies worth considering on one kind of ground. Pruning here
      rather than in the inner loop is the biggest single saving in the whole
-     search: on plain farmland every other technology costs more and spares
-     nothing, so two of the three branches disappear before the search
-     starts. Beside houses a T-pylon survives there too, and should.
+     search: on plain farmland the cable costs more and spares nothing, so
+     that branch disappears before the search starts. Beside houses it
+     survives, and should, because there it buys support back.
 
      A square beside houses is its own entry, because it scores differently
      from the same ground anywhere else. */

@@ -1,9 +1,10 @@
 /* =========================================================================
-   Connecting the Grid - building a span with 1, 2 or 3
+   Connecting the Grid - building a span with a numbered button
    =========================================================================
 
-   Rest the mouse on a square the line can go into next and three numbered
-   buttons appear inside it: 1, 2 and 3, one per technology. Clicking one
+   Rest the mouse on a square the line can go into next and the numbered
+   buttons appear inside it, one per technology, in the order of the number
+   keys. Clicking one
    sends the line that way on that technology - the direction and the
    technology in a single click, where the arrows and the rail take two.
 
@@ -19,8 +20,8 @@
 
    Mouse only. A finger has no hover, and on the map it is drawing. And like
    the arrows, hidden from screen readers and out of the tab order: an arrow
-   key on the highlighted square already builds, and 1, 2 and 3 on the
-   keyboard already choose the technology.
+   key on the highlighted square already builds, and the number keys
+   already choose the technology.
 
    Holds no game state and decides no rules: the click goes back to game.js,
    which builds or says why not.

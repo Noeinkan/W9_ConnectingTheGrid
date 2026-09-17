@@ -6,10 +6,10 @@
    draws them: region outlines from js/mapart.js, the line and its towers
    from js/routeart.js, the two ends from js/mapsymbols.js. Over them go
    the square in play, its arrows and the way back, the tinted spans, pins,
-   the 1, 2 and 3 buttons, a land card and a mouse pointer - everything a
+   the numbered technology buttons, a land card and a mouse pointer - everything a
    picture on the sheet needs to show a move.
 
-   The 1, 2 and 3 buttons and the land card are the game's own markup and
+   The numbered buttons and the land card are the game's own markup and
    classes (css/techpick.css, css/style.css, js/guidance.js), laid inside the
    picture the way the map lays them over itself: in squares, from --cols
    and --rows on the picture's box.
@@ -237,7 +237,7 @@ var HowToBoard = (function (CFG, Rng, Score, Advice, Guidance, MapArt, RouteArt,
       });
     }
 
-    /* The 1, 2 and 3 buttons in a square ahead of the one in play, as
+    /* The numbered buttons in a square ahead of the one in play, as
        js/techpick.js dresses them: they build on the square in play, so they
        read its ground - struck through where not allowed, starred where they
        suit it. `chosen` is the technology in use, which is ringed. */
