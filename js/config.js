@@ -182,7 +182,7 @@ var CONFIG = {
       tip: 'Lattice pylons. Nothing here needs sparing, so any other technology is money for nothing.',
       brief: 'The cheapest ground there is. Nothing here to spare.',
       pick: 'lattice',
-      pickBeside: 'tpylon',
+      pickBeside: 'cable',
       techs: {
         tpylon: { cost: 1.4, env: 0, comm: 0 },
         cable:  { cost: 6,   env: 0, comm: 0 }
@@ -201,7 +201,7 @@ var CONFIG = {
       tip: 'Lattice pylons. What upsets people is the road works, not the pylons, and a cable trench closes the road for longer.',
       brief: 'Road works upset people. Burying makes it worse.',
       pick: 'lattice',
-      pickBeside: 'tpylon',
+      pickBeside: 'cable',
       /* The objection is the closure, so a quieter pylon earns nothing, and
          digging the road up to bury the line makes it worse. */
       techs: {
@@ -223,9 +223,9 @@ var CONFIG = {
       tip: 'Lattice pylons. A pylon needs a few blasted foundations; a cable needs a trench blasted the whole way, at ten times the price.',
       brief: 'A trench through rock costs ten times what pylons do.',
       pick: 'lattice',
-      pickBeside: 'tpylon',
-      /* A T-pylon's single foundation disturbs a little less rock. A cable
-         trench is blasted end to end: far dearer, and more harm, not less. */
+      pickBeside: 'cable',
+      /* A cable trench is blasted end to end: far dearer than a handful of
+         pylon foundations, and more harm, not less. */
       techs: {
         tpylon: { cost: 5.6, env: -0.7, comm: 0 },
         cable:  { cost: 40,  env: -2,   comm: 0 }
@@ -242,13 +242,13 @@ var CONFIG = {
       texture: 'scatter',
       density: 0.7,
       description: 'Steep, high ground. Access tracks for plant and cranes are awkward to build, and a pylon on the skyline is seen for miles.',
-      tip: 'T-pylons if local support is tight: a third shorter, they barely break the skyline. A trench up the slopes is very dear and leaves a scar that washes out.',
-      // No pick: lattice or T-pylon depends on how much support is left.
-      brief: 'Pylons are seen for miles. T-pylons if support is tight.',
-      pickBeside: 'tpylon',
-      /* What people object to on hills is the view, which is what T-pylons
-         were designed for. Trenching a steep slope costs a great deal and
-         invites erosion. */
+      tip: 'Lattice pylons, unless local support is so tight that burying is worth it: a trench up the slopes is very dear and leaves a scar that washes out.',
+      // No pick: lattice or cable depends on how much support is left.
+      brief: 'Pylons are seen for miles. Burying is dear and scars.',
+      pickBeside: 'cable',
+      /* What people object to on hills is the view, and burying is the only
+         answer to a view. Trenching a steep slope costs a great deal and
+         invites erosion, which is why it is seldom worth it. */
       techs: {
         tpylon: { cost: 4.2, env: 0,  comm: -0.3 },
         cable:  { cost: 30,  env: -1, comm: 0 }
@@ -268,11 +268,10 @@ var CONFIG = {
       tip: 'Lattice pylons, or better, go round. Burying does not save the trees: the trench needs a felled strip that is never replanted.',
       brief: 'Every technology fells trees. Go round if you can.',
       pick: 'lattice',
-      pickBeside: 'tpylon',
-      /* The harm is the felling, and every technology fells. A T-pylon holds
-         the wires nearer the canopy, so its corridor is no narrower; a cable
-         needs a construction swathe cleared and a strip kept free of roots
-         for good, which is only a little narrower. */
+      pickBeside: 'cable',
+      /* The harm is the felling, and every technology fells. A cable needs a
+         construction swathe cleared and a strip kept free of roots for good,
+         which is only a little narrower than a wayleave. */
       techs: {
         tpylon: { cost: 4.2, env: -3,   comm: 0 },
         cable:  { cost: 18,  env: -2.4, comm: 0 }
@@ -291,8 +290,7 @@ var CONFIG = {
       tip: 'Lattice pylons. Every route crosses once, and the long span needs tall towers whatever carries the rest of the line. Cable cannot go through.',
       brief: 'Every route crosses once, on tall towers. No cable.',
       pick: 'lattice',
-      pickBeside: 'tpylon',
-      // The crossing towers are special either way, so a T-pylon spares nothing.
+      // The crossing towers are special whatever carries the rest of the line.
       techs: {
         tpylon: { cost: 7, env: -2, comm: 0 }
       }
@@ -308,12 +306,13 @@ var CONFIG = {
       texture: 'scatter',
       density: 0.5,
       description: 'Protected habitat, such as a Site of Special Scientific Interest. Building here does serious and hard-to-reverse ecological damage.',
-      tip: 'Go round if you possibly can. If not, T-pylons: their single foundation takes the least habitat. A cable trench digs the habitat up.',
-      brief: 'Go round. If you must cross, T-pylons harm least.',
-      pick: 'tpylon',
-      /* The one place the T-pylon is the answer: its small footprint is what
-         matters here. A trench through protected habitat is no better than
-         pylons over it, at six times the price. */
+      tip: 'Go round. Nothing crosses protected habitat gently: pylons stand in it and a cable trench digs it up, for the same harm at six times the price.',
+      brief: 'Go round. Every way across does the same harm.',
+      pick: 'lattice',
+      /* No technology spares this ground. A trench through protected habitat
+         is no better than pylons over it, at six times the price, so a route
+         that must cross crosses on lattice and pays the environment for it.
+         Going round is the answer this map is built to reward. */
       techs: {
         tpylon: { cost: 5.6, env: -5.6, comm: 0 },
         cable:  { cost: 24,  env: -8,   comm: 0 }
@@ -330,11 +329,11 @@ var CONFIG = {
       texture: 'scatter',
       density: 0.85,
       description: 'Where people live and work. Overhead lines here draw strong and sustained objection.',
-      tip: 'Underground cable only: no pylon, lattice or T, may stand over homes. Go round the town, or bury the line under its streets.',
+      tip: 'Underground cable only: no pylon may stand over homes. Go round the town, or bury the line under its streets.',
       brief: 'No pylons over homes. Go round, or bury the line.',
       pick: 'cable',
-      /* Pylons are not allowed here at all - see bansTerrain on lattice and
-         T-pylons - so the cost, envImpact and commImpact above describe a
+      /* Pylons are not allowed here at all - see bansTerrain on lattice -
+         so the cost, envImpact and commImpact above describe a
          line that cannot be built, and are never scored. A penalty would not
          do instead: the verdict follows the weakest meter, and a route
          with community support to spare would still take pylons over
@@ -360,7 +359,7 @@ var CONFIG = {
       tip: 'Gives community support back whatever carries the line, so lattice pylons. Worth a small detour.',
       brief: 'Wins support on any technology. Worth a detour.',
       pick: 'lattice',
-      pickBeside: 'tpylon',
+      pickBeside: 'cable',
       // A customer is connected just the same by any technology.
       techs: {
         tpylon: { cost: 2.8, env: 0, comm: 6 },
@@ -422,7 +421,7 @@ var CONFIG = {
       tip: 'The line must pass through one, on lattice pylons: the switchgear does the same harm whatever arrives. Pick the one that suits the rest of your route.',
       brief: 'The line must pass through one. Pick one that suits.',
       pick: 'lattice',
-      pickBeside: 'tpylon',
+      pickBeside: 'cable',
       // The harm is the substation's own, so no technology spares any of it.
       techs: {
         tpylon: { cost: 8.4, env: -1, comm: 0 },
@@ -457,6 +456,13 @@ var CONFIG = {
        bansTerrain  cell type ids this technology can never be used on
        summary      where this technology is the right answer, in a few
                     words - shown in the legend and read out on its button
+
+     Only technologies listed here are in the game. Every ground above also
+     carries a dormant 'tpylon' line in its techs block: T-pylons were taken
+     out of the game at the client's request, and the figures were left in
+     place so putting them back is one entry here plus one figure in
+     BESIDE HOMES. Nothing reads a techs entry for a technology that is not
+     in this list.
      --------------------------------------------------------------------- */
   technologies: [
     {
@@ -467,14 +473,6 @@ var CONFIG = {
       bansTerrain: ['settlement'],
       summary: 'the cheapest, and the right answer on most ground',
       description: 'Overhead line on conventional steel lattice pylons. Cheapest to build, and the tallest and most visible. Not allowed over homes.'
-    },
-    {
-      id: 'tpylon',
-      label: 'T-pylons',
-      short: 'T-pylon',
-      bansTerrain: ['settlement'],
-      summary: 'shorter and slimmer, for squares beside houses, hills and designated land',
-      description: 'Overhead line on T-pylons: a single shaft about a third shorter than a lattice pylon, with a smaller footprint. Costs more; worth it on high ground, where a lattice pylon is seen for miles, and on designated land you cannot go round. Not allowed over homes.'
     },
     {
       id: 'cable',
@@ -496,7 +494,8 @@ var CONFIG = {
      still in people's view from their windows. A span on any square that
      shares an edge with houses costs this much community support on top of
      whatever its own ground costs - and how much depends on how much of
-     the line people can see, which is the whole case for T-pylons.
+     the line people can see: an overhead line is in the view from a
+     window and a buried one is not.
 
        homes   cell type ids that count as houses
        comm    the extra community figure, per technology id. Whole tenths,
@@ -505,7 +504,7 @@ var CONFIG = {
      --------------------------------------------------------------------- */
   besideHomes: {
     homes: ['settlement'],
-    comm: { lattice: -3, tpylon: -1, cable: 0 }
+    comm: { lattice: -3, cable: 0 }
   },
 
 
@@ -659,7 +658,7 @@ var CONFIG = {
       id: 'community',
       weight: 1,
       label: 'Community pressure',
-      hint: 'The town stands across the way round, and nobody has offered land. Pass it on T-pylons, bury the line under its streets, or cross the habitat.',
+      hint: 'The town stands across the way round, and nobody has offered land. Pass beside it and pay in support, bury the line under its streets, or cross the habitat.',
       weekly: true,
       /* No pylons may stand over houses, so the town is passed beside, where
          pylons cost support, or under, where cable costs money. Benefit land
@@ -767,7 +766,7 @@ var CONFIG = {
       goodDirection: 'A high score means little harm to habitats and landscape.',
       lowLabel: 'Serious harm',
       highLabel: 'Well protected',
-      whyHint: 'Designated land does the most harm, then woodland: go round them. On designated land T-pylons cut the harm by nearly a third. Burying spares nothing, because the trench does its own damage.'
+      whyHint: 'Designated land does the most harm, then woodland: go round them. Burying spares nothing, because the trench does its own damage.'
     },
     {
       id: 'comm',
@@ -1036,7 +1035,7 @@ var CONFIG = {
             {
               picture: 'keys',
               title: 'Direction and technology in one click',
-              body: 'Rest the mouse on a square the line can go into next, and 1, 2 and 3 appear in it. Click one to send the line there on that technology. The star marks the one that suits the highlighted square.'
+              body: 'Rest the mouse on a square the line can go into next, and 1 and 2 appear in it. Click one to send the line there on that technology. The star marks the one that suits the highlighted square.'
             },
             {
               picture: 'drag',
@@ -1066,7 +1065,7 @@ var CONFIG = {
             {
               picture: 'techs', wide: true,
               title: 'Overhead line or underground cable',
-              body: 'Choose before each span, the way a planner would. Lattice pylons are cheapest and right on most ground. T-pylons cost more but are shorter and slimmer: worth it on hills, beside houses, and on designated land you cannot go round. Underground cable is the only way through houses; anywhere else it is very expensive, the trench does its own harm, and it cannot be laid through a river.'
+              body: 'Choose before each span, the way a planner would. Lattice pylons are cheapest and right on most ground. Underground cable is out of sight, and the only way through houses: worth its price on the squares beside a town, where an overhead line costs community support. Anywhere else it is very expensive, the trench does its own harm, and it cannot be laid through a river.'
             },
             {
               picture: 'land', wide: true,
@@ -1107,7 +1106,7 @@ var CONFIG = {
           keys: [
             { keys: ['←', '↑', '→', '↓'], spoken: 'Arrow keys', does: 'Move around the map. On the highlighted square, send the line that way.' },
             { keys: ['Shift', '+', '→'], spoken: 'Shift with an arrow key', does: 'Look that way first, without building.' },
-            { keys: ['1', '2', '3'], spoken: '1, 2 or 3', does: 'Change technology: lattice pylons, T-pylons or underground cable.' },
+            { keys: ['1', '2'], spoken: '1 or 2', does: 'Change technology: lattice pylons or underground cable.' },
             { keys: ['E'], spoken: 'E', does: 'Explain the last span.' },
             { keys: ['Enter'], spoken: 'Enter', does: 'On a square of the line, take the line back to it.' }
           ]
@@ -1139,9 +1138,8 @@ var CONFIG = {
          houses. Where a technology may NOT go is not listed here: that is a
          rule, and the picture reads it from bansTerrain. */
       suits: {
-        lattice: ['farmland', 'road', 'woodland', 'river'],
-        tpylon: ['hilly', 'sssi', 'besideHomes'],
-        cable: ['settlement']
+        lattice: ['farmland', 'road', 'woodland', 'river', 'hilly'],
+        cable: ['settlement', 'besideHomes']
       },
 
       // Words drawn inside the pictures.
@@ -1257,7 +1255,7 @@ var CONFIG = {
     techPickTitle: '{key}: send the line to the {side} on {tech}. The span on {terrain}: {effect}',
     techPickBanned: '{key}: {tech} cannot be used on {terrain}, the highlighted square.',
     // On the land card of such a square, under its own figures.
-    tipAheadNote: '1, 2 or 3 on this square sends the line here, building on the highlighted {terrain}.',
+    tipAheadNote: '1 or 2 on this square sends the line here, building on the highlighted {terrain}.',
 
     // The land card's table of what the square costs on each technology.
     tipTechBanned: 'not allowed',
@@ -1311,7 +1309,7 @@ var CONFIG = {
       {
         at: 'tech',
         title: 'Choose what to build',
-        body: 'Pick lattice pylons, T-pylons or underground cable before each span, or press 1, 2 or 3. Lattice suits most ground, T-pylons designated land, cable houses. Each button shows what one span on the highlighted square costs on it: cost / environment / community.'
+        body: 'Pick lattice pylons or underground cable before each span, or press 1 or 2. Lattice suits most ground; cable is the only way through houses, and spares community support on the squares beside them. Each button shows what one span on the highlighted square costs on it: cost / environment / community.'
       },
       {
         at: 'meters',

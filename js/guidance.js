@@ -405,8 +405,9 @@ var Guidance = (function (CFG, Score, Advice, Render) {
       tip.appendChild(techRows(typeId, beside, pick));
     }
 
-    /* A square the line can go into next carries 1, 2 and 3 (js/techpick.js),
-       and they build on the highlighted square, not this one. Said here,
+    /* A square the line can go into next carries the numbered buttons
+       (js/techpick.js), and they build on the highlighted square, not this
+       one. Said here,
        under this square's own figures, so those are not taken for the price. */
     var ahead = aheadNote(col, row);
     if (ahead) { tip.appendChild(el('span', 'tip-ahead', ahead)); }

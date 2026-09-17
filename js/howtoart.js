@@ -220,22 +220,22 @@ var HowToArt = (function (CFG, Score, Advice, HowToBoard) {
     ], 4, map.paint);
   }
 
-  /* Rest the mouse on a square ahead and 1, 2 and 3 appear in it: one click
-     sends the line there on that technology. Over designated land, where
-     the T-pylon is starred - and 2 is the one pressed. */
+  /* Rest the mouse on a square ahead and 1 and 2 appear in it: one click
+     sends the line there on that technology. The highlighted square is
+     beside houses, where the cable is starred - and 2 is the one pressed. */
   function keys() {
-    var map = board(['FWWFF', 'FSSFF', 'FFTTF']);
+    var map = board(['FWWFF', 'FFSFF', 'FTTFF']);
     var rest = [455, 265];
     var one = [[0, 1]];
-    var two = [[0, 1], [1, 1, 'tpylon']];
+    var two = [[0, 1], [1, 1, 'cable']];
     return storyboard(map.el, [
       { route: one, target: [1, 1], pointer: rest },
       { route: one, target: [1, 1], pointer: [262, 188], keys: [2, 1] },
       { route: one, target: [1, 1], pointer: [252, 152], keys: [2, 1] },
       { route: one, target: [1, 1], pointer: [252, 152], keys: [2, 1] },
-      { route: two, target: [2, 1], pointer: [252, 152, 'press'], tech: 'tpylon' },
-      { route: two, target: [2, 1], pointer: [252, 152], tech: 'tpylon' },
-      { route: two, target: [2, 1], pointer: rest, tech: 'tpylon' }
+      { route: two, target: [2, 1], pointer: [252, 152, 'press'], tech: 'cable' },
+      { route: two, target: [2, 1], pointer: [252, 152], tech: 'cable' },
+      { route: two, target: [2, 1], pointer: rest, tech: 'cable' }
     ], 2, map.paint);
   }
 
@@ -282,14 +282,14 @@ var HowToArt = (function (CFG, Score, Advice, HowToBoard) {
     ], 2, map.paint);
   }
 
-  /* The three technologies, one above the other: a stretch of line built
-     on it, where it is the right answer, and where it may not go.
+  /* Every technology, one above the other: a stretch of line built on it,
+     where it is the right answer, and where it may not go.
 
      Where it is right is a judgement, so it is written in CONFIG
      (copy.howTo.suits); where it may not go is a rule, so it is read off
      bansTerrain. The stretch each line is drawn across is ground that
      technology suits. */
-  var STRIPS = { lattice: 'FRF', tpylon: 'HSH', cable: 'TTT' };
+  var STRIPS = { lattice: 'FRF', cable: 'TTT' };
 
   function techs() {
     var box = put(null, 'div', 'howto-techs');
@@ -393,8 +393,9 @@ var HowToArt = (function (CFG, Score, Advice, HowToBoard) {
   }
 
   /* The technology buttons and the meters: change technology, watch the
-     marks move. Over designated land, because it is where the three differ
-     most: the T-pylon spares habitat, and the cable costs most and spares none. */
+     marks move. Over designated land, because it is the sharpest lesson the
+     two technologies teach: the cable costs six times as much there and
+     spares the habitat nothing. */
   function preview() {
     var box = panel('howto-preview');
     var ahead = 'sssi';

@@ -5,8 +5,8 @@ a map, and living with what it costs in money, environment and community
 support.
 
 The player draws a line from the **power station** on the left edge to the
-**grid supply point** on the right, choosing lattice pylons, T-pylons or
-underground cable for each span. Three
+**grid supply point** on the right, choosing lattice pylons or underground
+cable for each span. Three
 dials react to every span built. When the line is energised, the weakest dial
 decides the verdict.
 
@@ -75,7 +75,7 @@ The last two are the interesting ones. `--seeds` sweeps the seed space and
 reports what share of generated maps pass the balance checks and why the rest
 were thrown away, so the generator can be tuned against evidence rather than
 against a hunch. At the settings in [js/config.js](js/config.js) it accepts
-about three maps in four.
+about three maps in five.
 
 To run the scoring suite in the browser console on load, set
 `debug.runSelfTestOnLoad` to `true` in [js/config.js](js/config.js), or call
@@ -100,7 +100,7 @@ gets asked about.
 cost, environment and community are read from a table in
 [js/config.js](js/config.js): the ground's own `cost`, `envImpact` and
 `commImpact` are the figures on lattice pylons, and its `techs` block gives
-T-pylons and cable on that ground. A span on a square that shares an edge with
+cable on that ground. A span on a square that shares an edge with
 houses adds `besideHomes.comm` for its technology on top.
 
 The totals sum across the route and map onto three 0–100 dials:
@@ -123,11 +123,10 @@ choice in each place is also the one that scores:
 
 | Where | Technology | Why |
 |---|---|---|
-| Farmland, roads, rocky ground, woodland, river, substations, customers | lattice | Nothing to spare, or every technology does the same harm: trees are felled either way, and a trench through rock or up a slope does more |
-| Hills | T-pylons, if community support is tight | Lattice pylons are seen for miles on high ground |
-| Designated land | go round; T-pylons if you must cross | Their single foundation takes the least habitat; a cable trench digs it up |
+| Farmland, roads, rocky ground, woodland, river, hills, substations, customers | lattice | Nothing to spare, or every technology does the same harm: trees are felled either way, and a trench through rock or up a slope does more |
+| Designated land | go round | Nothing crosses it gently. A trench digs up the habitat the pylons would only stand in, at six times the price |
 | Houses | cable, the only choice | Pylons may not stand over homes |
-| Any square beside houses | T-pylons | Lattice there costs 3 community, a T-pylon 1, cable nothing |
+| Any square beside houses | cable | Lattice there costs 3 community, cable nothing |
 
 The last row is `besideHomes` in the config. It is the one figure that depends
 on where a square is rather than what it is, so each span records `beside`
@@ -202,8 +201,8 @@ so a corridor that does not add up is never shown at all.
   run one click per square. Holding the button down and dragging draws a run in
   one gesture, and dragging back over the line rubs it out.
 - **Building on a technology in one click:** rest the mouse on a square an
-  arrow points into and three numbered buttons appear in it — 1 lattice,
-  2 T-pylons, 3 cable, the order of the number keys. Clicking one sends the
+  arrow points into and numbered buttons appear in it — 1 lattice, 2 cable,
+  the order of the number keys. Clicking one sends the
   line there on that technology, which also becomes the one chosen on the
   rail. The span it builds is on the highlighted square, not the one under
   the pointer, so the buttons read the highlighted square: a technology not
@@ -221,7 +220,7 @@ so a corridor that does not add up is never shown at all.
   the cursor is on the highlighted square sends the line that way instead, so
   arrow-arrow-arrow draws a route at the speed a mouse does. It cannot trap
   you: the way the line came in is never a legal way out, so there is always at
-  least one direction that still just moves the cursor. `1`, `2` and `3` pick a
+  least one direction that still just moves the cursor. `1` and `2` pick a
   technology.
 - **Either way:** hovering or focusing any square opens its land card: the
   land's icon and name, one short line on what it means for a route, and
@@ -356,7 +355,7 @@ Across 500 seeds the generator accepts about three maps in five (59.6% at the
 settings in `config.js`), and the best weakest dial on an accepted map runs
 from 70 to 77.7, median 72.3. That sweep mixes every kind of landscape below
 and judges them all by these three checks alone; the plain kind on its own is
-accepted 78% of the time. The difficulty badge is banded against these
+accepted 77% of the time. The difficulty badge is banded against these
 figures, so re-measure with `node js/balance.js --seeds 500` before moving
 them.
 
@@ -391,11 +390,11 @@ the three checks above, never instead of them:
 
 | Kind | Drawn with | Must also show | Accepted |
 |---|---|---|---|
-| Open country | the plain generator | — | 78% |
-| Narrow gap | a gap one row wide, rougher ground, bigger lake | best weakest dial under 73 | 41% |
-| Community pressure | a five-square town across the way round, no benefit land, one customer | best route cannot keep community at 90 | 48% |
+| Open country | the plain generator | — | 77% |
+| Narrow gap | a gap one row wide, rougher ground, bigger lake | best weakest dial under 73 | 40% |
+| Community pressure | a five-square town across the way round, no benefit land, one customer | best route cannot keep community at 90 | 47% |
 | Hard crossing | woodland on both river banks | — | 52% |
-| Knife edge | the same town and rewards, and wooded banks | no dial on the best route above 85 | 17% |
+| Knife edge | the same town and rewards, and wooded banks | no dial on the best route above 85 | 16% |
 | The long way round | the plain generator | best route costs at most 1.08x the cheapest | 15% |
 
 The two town kinds were redrawn when pylons were banned over houses. Their
@@ -404,6 +403,12 @@ under pressure; banned from that, the best route went round or under, and
 both kinds fell to about 1% accepted. A smaller town keeps a route under it
 affordable, and taking away the benefit land stops the way round buying back
 the objection that passing beside the town costs.
+
+Those same two kinds are the only ones that moved when T-pylons were taken
+out of the game: Community pressure fell from 48.3% to 46.7% and Knife edge
+from 17.0% to 15.7%, because the middle way past a town went with them.
+Everything else held, and the plain 500-seed sweep did not move at all,
+which says the T-pylon was almost never on the best route anywhere else.
 
 A rarely accepted kind gets more rerolls (`maxTries`). Rerolls keep to the
 kind the first roll picked, so the weights mean what they say rather than
@@ -568,7 +573,7 @@ pretending otherwise makes both unusable.
 index.html        markup and script order
 css/style.css     all styling, including the colours of the landscape
 css/guidance.css  the forecast, Why?, span tints, land card numbers and the tour
-css/techpick.css  the 1, 2 and 3 buttons on the squares ahead
+css/techpick.css  the numbered technology buttons on the squares ahead
 css/howto.css     the How to play sheet and its pictures
 css/mapmotion.css the landscape's motion: water, traffic, plants, smoke, clouds
 css/bigscreen.css the game growing with the screen, and kiosk mode's styles
@@ -586,7 +591,7 @@ js/mapmotion.js   what moves in it: river, traffic, ripples, plants, smoke, clou
 js/routeart.js    draws the route and the best route found over it
 js/render.js      everything else that writes to the page. No state, no rules
 js/guidance.js    dresses render's meters, buttons, board and land card with advice
-js/techpick.js    1, 2 and 3 on the squares ahead: a direction and a technology in one click
+js/techpick.js    numbered buttons on the squares ahead: a direction and a technology in one click
 js/tour.js        the five-step tour
 js/howto.js       the How to play sheet: cards of pictures, played while it is open
 js/howtoart.js    the pictures on it, scored with the game's own numbers

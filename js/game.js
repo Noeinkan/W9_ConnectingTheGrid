@@ -890,7 +890,7 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
     }
   }
 
-  // 1, 2 and 3 pick a technology from anywhere on the page; E explains.
+  // The number keys pick a technology from anywhere on the page; E explains.
   function onShortcut(event) {
     if (event.metaKey || event.ctrlKey || event.altKey) { return; }
     if (event.key === 'Escape') { Render.hideTip(); return; }
@@ -967,7 +967,7 @@ var Game = (function (CFG, Score, Render, MapGen, Balance, Foresight, Advice, Gu
       onDragOver: onDragOver
     });
     Render.buildTechPicker(Render.elements.tech, setTech);
-    // 1, 2 and 3 on the squares ahead: a direction and a technology in one click.
+    // The numbered buttons on the squares ahead: a direction and a technology in one click.
     TechPick.build({ onBuild: stepWith });
     Render.buildMeters(Render.elements.meters);
     Render.buildLegend(Render.elements.legend);

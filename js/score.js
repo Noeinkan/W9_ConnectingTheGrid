@@ -228,8 +228,8 @@ var Score = (function (CFG) {
 
      There used to be one multiplier per technology, applied to every ground
      alike, and it gave answers no planner would: burying a line through a
-     wood spared the trees, a T-pylon made a road closure quieter, and a
-     customer was worth less connected by cable. So the figures are now
+     wood spared the trees, and a customer was worth less connected by
+     cable. So the figures are now
      written out per ground, and this only looks them up.
 
      `beside` says the square shares an edge with houses, and adds what
